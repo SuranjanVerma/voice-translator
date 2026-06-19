@@ -2,7 +2,6 @@ package com.translator.language_translator.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -16,35 +15,38 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+                // 1. Disable CSRF for our API endpoints so POST requests don't get blocked
                 .csrf(csrf -> csrf.disable())
+
+                // 2. Configure which pages are public and which are private
                 .authorizeHttpRequests(auth -> auth
-                        // CRITICAL: We added "/login.html" here so users can actually see the page before logging in!
-                        .requestMatchers("/css/**", "/js/**", "/api/auth/register", "/login.html").permitAll()
+                        // CRITICAL: Make the login page, error page, and ALL /api/auth/ endpoints public!
+                        .requestMatchers("/login.html", "/login", "/api/auth/**", "/error").permitAll()
+                        // Everything else (like the translator page) requires the user to be logged in
                         .anyRequest().authenticated()
                 )
+
+                // 3. Tell Spring Security to use our custom HTML login page
                 .formLogin(form -> form
-                        // Tell Spring to use our custom HTML file
                         .loginPage("/login.html")
-                        // Tell Spring to listen for POST requests at this URL to verify passwords
                         .loginProcessingUrl("/login")
-                        // If the password is correct, send them to the Translator page!
-                        .defaultSuccessUrl("/", true)
+                        .defaultSuccessUrl("/index.html", true)
+                        .failureUrl("/login.html?error=true")
                         .permitAll()
                 )
+
+                // 4. Configure logout
                 .logout(logout -> logout
-                        // When they log out, send them back to the custom login page
-                        .logoutSuccessUrl("/login.html")
+                        .logoutUrl("/logout")
+                        .logoutSuccessUrl("/login.html?logout=true")
                         .permitAll()
-                )
-                .httpBasic(Customizer.withDefaults());
+                );
 
         return http.build();
     }
 
-    // This is the engine that encrypts passwords
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-
 }
