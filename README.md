@@ -17,6 +17,25 @@ A full-stack, web application that provides real-time, offline Automatic Speech 
 * **Dynamic History Dashboard:** A sleek, asynchronous dashboard that retrieves and displays a user's chronological translation records securely from a PostgreSQL database.
 * **Format Forcing Audio Capture:** Uses RecordRTC on the frontend to bypass default browser compression, forcing pure 16kHz Mono WAV audio streams for maximum ASR accuracy.
 
+## 📸 Application Gallery
+
+### 🎙️ Core Translation Interface
+![Translation Interface](assets/main.png)
+
+### 🕒 Dynamic History Dashboard
+![History Dashboard](assets/history.png)
+
+### 🔒 Secure Enterprise Authentication
+*Featuring masked security questions, BCrypt password hashing, and session management.*
+<p align="center">
+  <img src="assets/sign%20up.png" width="48%" alt="Sign Up Form">
+  <img src="assets/sign%20in.png" width="48%" alt="Sign In Form">
+</p>
+
+### 🗄️ Encrypted Database Layer
+*PostgreSQL integration demonstrating secure BCrypt hashing for both user passwords and account recovery answers.*
+![Database Security](assets/database.png)
+
 ## 🛠️ Technology Stack
 
 **Backend Architecture**
