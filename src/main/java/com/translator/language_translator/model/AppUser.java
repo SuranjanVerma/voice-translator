@@ -20,8 +20,9 @@ public class AppUser {
     @Column(nullable = false)
     private String password;
 
-    // Security fields for password recovery
     private String securityQuestion;
+
+    // This will now store an unreadable BCrypt Hash, NOT the actual answer
     private String securityAnswer;
 
     private String role = "USER";
@@ -30,7 +31,6 @@ public class AppUser {
         this.username = username;
         this.password = password;
         this.securityQuestion = securityQuestion;
-        // Save the answer in lowercase to prevent case-sensitive login errors later
-        this.securityAnswer = securityAnswer != null ? securityAnswer.toLowerCase() : null;
+        this.securityAnswer = securityAnswer; // Accepts the encrypted hash
     }
 }

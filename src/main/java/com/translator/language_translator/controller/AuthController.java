@@ -31,7 +31,11 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Error: Username is already taken!");
         }
 
-        AppUser newUser = new AppUser(username, passwordEncoder.encode(password), securityQuestion, securityAnswer);
+        // 1. Convert the answer to lowercase so it's not case-sensitive
+        // 2. Encrypt it using BCrypt so it is permanently hidden in the database
+        String hashedAnswer = passwordEncoder.encode(securityAnswer.toLowerCase());
+
+        AppUser newUser = new AppUser(username, passwordEncoder.encode(password), securityQuestion, hashedAnswer);
         userRepository.save(newUser);
 
         return ResponseEntity.ok("User registered successfully!");
@@ -51,7 +55,8 @@ public class AuthController {
 
         AppUser user = userOptional.get();
 
-        if (user.getSecurityAnswer() == null || !user.getSecurityAnswer().equals(securityAnswer.toLowerCase())) {
+        // Use passwordEncoder.matches() to safely compare the typed answer against the database hash
+        if (user.getSecurityAnswer() == null || !passwordEncoder.matches(securityAnswer.toLowerCase(), user.getSecurityAnswer())) {
             return ResponseEntity.badRequest().body("Error: Incorrect security answer.");
         }
 
