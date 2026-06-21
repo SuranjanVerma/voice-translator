@@ -5,27 +5,26 @@ WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 
-# Download all 4 Vosk models directly to /vosk-models (not inside src/)
-RUN apt-get update && apt-get install -y wget unzip && \
-    mkdir -p /vosk-models && \
-    wget -q https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip && \
-    unzip -q vosk-model-small-en-in-0.4.zip && \
-    mv vosk-model-small-en-in-0.4 /vosk-models/model-in && \
-    rm vosk-model-small-en-in-0.4.zip && \
-    wget -q https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip && \
-    unzip -q vosk-model-small-en-us-0.15.zip && \
-    mv vosk-model-small-en-us-0.15 /vosk-models/model-en && \
-    rm vosk-model-small-en-us-0.15.zip && \
-    wget -q https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip && \
-    unzip -q vosk-model-small-hi-0.22.zip && \
-    mv vosk-model-small-hi-0.22 /vosk-models/model-hi && \
-    rm vosk-model-small-hi-0.22.zip && \
-    wget -q https://alphacephei.com/vosk/models/vosk-model-te-0.171.zip && \
-    unzip -q vosk-model-te-0.171.zip && \
-    mv vosk-model-te-0.171 /vosk-models/model-te && \
-    rm vosk-model-te-0.171.zip
+# Download Vosk models to /vosk-models
+RUN apt-get update && apt-get install -y wget unzip && mkdir -p /vosk-models
 
-# Build the app (models are never in src/main/resources)
+RUN wget -q -O model-in.zip https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip && \
+    unzip -q model-in.zip && mv vosk-model-small-en-in-0.4 /vosk-models/model-in && rm model-in.zip
+
+RUN wget -q -O model-en.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip && \
+    unzip -q model-en.zip && mv vosk-model-small-en-us-0.15 /vosk-models/model-en && rm model-en.zip
+
+RUN wget -q -O model-hi.zip https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip && \
+    unzip -q model-hi.zip && mv vosk-model-small-hi-0.22 /vosk-models/model-hi && rm model-hi.zip
+
+RUN wget -q -O model-te.zip https://alphacephei.com/vosk/models/vosk-model-small-te-0.42.zip && \
+    unzip -q model-te.zip && mv vosk-model-small-te-0.42 /vosk-models/model-te && rm model-te.zip
+
+RUN for model in model-in model-en model-hi model-te; do \
+      test -f /vosk-models/$model/am/final.mdl || (echo "Model $model invalid!" && exit 1); \
+    done
+
+# Build the Spring Boot app
 RUN mvn clean package -DskipTests
 
 # Stage 2: Production Environment
@@ -38,5 +37,4 @@ COPY --from=builder /vosk-models /vosk-models
 ENV VOSK_MODEL_DIR=/vosk-models
 EXPOSE 8080
 
-# --enable-native-access suppresses the JNA warning
 ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "app.jar"]
