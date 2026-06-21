@@ -18,7 +18,7 @@ public class SpeechService {
     private final ConcurrentHashMap<String, Model> modelCache = new ConcurrentHashMap<>();
     private Model fallbackModel;
 
-    // Default path is /vosk-models, override with env var VOSK_MODEL_DIR
+    // /vosk-models is the default, overridable via VOSK_MODEL_DIR env variable
     public SpeechService(@Value("${vosk.model.dir:/vosk-models}") String modelDir) {
         this.modelDir = modelDir;
         this.fallbackModel = loadModel("model-in", false);
@@ -33,7 +33,7 @@ public class SpeechService {
                 case "hi-IN" -> "model-hi";
                 case "te-IN" -> "model-te";
                 case "en-US" -> "model-en";
-                default      -> "model-in";   // en-IN or any unknown -> fallback
+                default      -> "model-in";   // en-IN or unknown → fallback
             };
 
             Model loaded = loadModel(folderName, true);

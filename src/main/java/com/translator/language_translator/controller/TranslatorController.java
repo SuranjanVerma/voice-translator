@@ -20,69 +20,53 @@ public class TranslatorController {
     private final TranslationService translationService;
     private final TranslationRepository repository;
 
-    // Spring Boot automatically injects your services and database repository here
     public TranslatorController(SpeechService speechService, TranslationService translationService, TranslationRepository repository) {
         this.speechService = speechService;
         this.translationService = translationService;
         this.repository = repository;
     }
 
-    // ==========================================
-    // 1. THE TRANSLATION ENDPOINT
-    // ==========================================
     @PostMapping("/translate")
     public ResponseEntity<?> handleTranslation(
             @RequestParam("audio") MultipartFile audio,
+            @RequestParam("sourceLang") String sourceLang,
             @RequestParam("targetLang") String targetLang,
             Authentication auth) {
 
         try {
-            // Step 1: Vosk listens to the audio and converts it to English text
-            String originalText = speechService.transcribe(audio.getInputStream());
+            // *** The crucial fix: pass sourceLang to transcribe ***
+            String originalText = speechService.transcribe(audio.getInputStream(), sourceLang);
+
             if (originalText == null || originalText.isBlank()) {
                 return ResponseEntity.badRequest().body("No speech detected.");
             }
 
-            // Step 2: Send the English text to the internet to be translated
-            String translatedText = translationService.translate(originalText, "en", targetLang);
+            String translatedText = translationService.translate(originalText, sourceLang, targetLang);
 
-            // Step 3: Securely identify who is logged in (Fallback to 'anonymous' just in case)
             String username = (auth != null && auth.isAuthenticated()) ? auth.getName() : "anonymous";
-
-            // Step 4: Save the transaction permanently in PostgreSQL
-            TranslationRecord record = new TranslationRecord(username, "en", targetLang, originalText, translatedText);
+            TranslationRecord record = new TranslationRecord(username, sourceLang, targetLang, originalText, translatedText);
             repository.save(record);
 
-            // Step 5: Package the results into JSON and send them back to the browser
             return ResponseEntity.ok(Map.of(
                     "original", originalText,
                     "translated", translatedText
             ));
 
         } catch (Exception e) {
-            e.printStackTrace(); // Prints the exact error to your Eclipse console for easy debugging
+            e.printStackTrace();
             return ResponseEntity.internalServerError().body("System Error: " + e.getMessage());
         }
     }
 
-    // ==========================================
-    // 2. THE HISTORY DASHBOARD ENDPOINT
-    // ==========================================
     @GetMapping("/history")
     public ResponseEntity<?> getHistory(Authentication auth) {
-
-        // Security Check: Block access if the user's session expired
         if (auth == null || !auth.isAuthenticated()) {
             return ResponseEntity.status(401).body("Error: User must be logged in to view history.");
         }
 
         try {
-            // Fetch only the logged-in user's history, sorted with the newest at the top
             List<TranslationRecord> history = repository.findByUsernameOrderByTimestampDesc(auth.getName());
-
-            // Return the list to the Javascript fetch() request
             return ResponseEntity.ok(history);
-
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body("Error fetching history.");

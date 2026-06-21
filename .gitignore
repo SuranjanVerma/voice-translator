@@ -36,3 +36,18 @@ build/
 
 # Ignore downloaded Vosk models
 src/main/resources/vosk-models/*
+
+
+
+# Maven wrapper (not needed for Docker)
+.mvn/
+mvnw
+mvnw.cmd
+
+# Vosk models (downloaded during Docker build)
+vosk-model/
+vosk-models/
+src/main/resources/vosk-model/
+
+# Any leftover zips
+*.zip
