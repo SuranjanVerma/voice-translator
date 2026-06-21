@@ -3,34 +3,43 @@ package com.translator.language_translator.model;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
-@Entity
-@Table(name = "users")
 @Data
 @NoArgsConstructor
+@Entity
+@Table(name = "users")
 public class AppUser {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false, unique = true)
     private String username;
 
     @Column(nullable = false)
     private String password;
 
+    @Column
+    private String role;
+
+    @Column
     private String securityQuestion;
 
-    // This will now store an unreadable BCrypt Hash, NOT the actual answer
+    @Column
     private String securityAnswer;
 
-    private String role = "USER";
-
-    public AppUser(String username, String password, String securityQuestion, String securityAnswer) {
+    // Optional explicit constructor (Lombok's @Data does not generate all-args)
+    public AppUser(String username, String password, String role,
+                   String securityQuestion, String securityAnswer) {
         this.username = username;
         this.password = password;
+        this.role = role;
         this.securityQuestion = securityQuestion;
-        this.securityAnswer = securityAnswer; // Accepts the encrypted hash
+        this.securityAnswer = securityAnswer;
+    }
+
+    public AppUser(String username, @Nullable String encode, String securityQuestion, String hashedAnswer) {
     }
 }
