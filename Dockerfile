@@ -2,35 +2,41 @@
 FROM maven:3.9-eclipse-temurin-25 AS builder
 WORKDIR /app
 
-# Copy your source code into the cloud container
 COPY pom.xml .
 COPY src ./src
 
-# Install required utilities
-RUN apt-get update && apt-get install -y wget unzip
+# Download all 4 Vosk models directly to /vosk-models (not inside src/)
+RUN apt-get update && apt-get install -y wget unzip && \
+    mkdir -p /vosk-models && \
+    wget -q https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip && \
+    unzip -q vosk-model-small-en-in-0.4.zip && \
+    mv vosk-model-small-en-in-0.4 /vosk-models/model-in && \
+    rm vosk-model-small-en-in-0.4.zip && \
+    wget -q https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip && \
+    unzip -q vosk-model-small-en-us-0.15.zip && \
+    mv vosk-model-small-en-us-0.15 /vosk-models/model-en && \
+    rm vosk-model-small-en-us-0.15.zip && \
+    wget -q https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip && \
+    unzip -q vosk-model-small-hi-0.22.zip && \
+    mv vosk-model-small-hi-0.22 /vosk-models/model-hi && \
+    rm vosk-model-small-hi-0.22.zip && \
+    wget -q https://alphacephei.com/vosk/models/vosk-model-te-0.171.zip && \
+    unzip -q vosk-model-te-0.171.zip && \
+    mv vosk-model-te-0.171 /vosk-models/model-te && \
+    rm vosk-model-te-0.171.zip
 
-# Download the Indian English Model and unzip it
-RUN wget https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip
-RUN unzip vosk-model-small-en-in-0.4.zip
-
-# Explicitly create the exact folder structure Java expects
-RUN mkdir -p /app/src/main/resources/vosk-model/model-in
-
-# Move the *contents* (using /*) directly into the folder to prevent nesting
-RUN mv vosk-model-small-en-in-0.4/* /app/src/main/resources/vosk-model/model-in/
-
-# Package the Spring Boot application
+# Build the app (models are never in src/main/resources)
 RUN mvn clean package -DskipTests
 
 # Stage 2: Production Environment
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 
-# Copy the finished JAR file from the builder stage
 COPY --from=builder /app/target/*.jar app.jar
+COPY --from=builder /vosk-models /vosk-models
 
-# Copy the specific model directory explicitly to the production stage
-COPY --from=builder /app/src/main/resources/vosk-model/model-in /app/src/main/resources/vosk-model/model-in
+ENV VOSK_MODEL_DIR=/vosk-models
+EXPOSE 8080
 
-# Start the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# --enable-native-access suppresses the JNA warning
+ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "app.jar"]
