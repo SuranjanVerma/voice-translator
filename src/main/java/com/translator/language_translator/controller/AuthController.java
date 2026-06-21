@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map; // <-- REQUIRED FOR THE JSON RESPONSE
 import java.util.Optional;
 
 @RestController
@@ -31,8 +32,6 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Error: Username is already taken!");
         }
 
-        // 1. Convert the answer to lowercase so it's not case-sensitive
-        // 2. Encrypt it using BCrypt so it is permanently hidden in the database
         String hashedAnswer = passwordEncoder.encode(securityAnswer.toLowerCase());
 
         AppUser newUser = new AppUser(username, passwordEncoder.encode(password), securityQuestion, hashedAnswer);
@@ -55,7 +54,6 @@ public class AuthController {
 
         AppUser user = userOptional.get();
 
-        // Use passwordEncoder.matches() to safely compare the typed answer against the database hash
         if (user.getSecurityAnswer() == null || !passwordEncoder.matches(securityAnswer.toLowerCase(), user.getSecurityAnswer())) {
             return ResponseEntity.badRequest().body("Error: Incorrect security answer.");
         }
@@ -64,5 +62,12 @@ public class AuthController {
         userRepository.save(user);
 
         return ResponseEntity.ok("Password reset successfully! You can now log in.");
+    }
+
+    // NEW ENDPOINT: Safely checks if a user exists for the frontend Pre-Login check
+    @GetMapping("/check-user")
+    public ResponseEntity<?> checkUser(@RequestParam String username) {
+        boolean exists = userRepository.findByUsername(username).isPresent();
+        return ResponseEntity.ok(Map.of("exists", exists));
     }
 }
