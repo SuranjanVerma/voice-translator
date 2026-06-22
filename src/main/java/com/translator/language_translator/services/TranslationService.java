@@ -2,11 +2,13 @@ package com.translator.language_translator.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,43 +16,109 @@ import java.util.Map;
 @Service
 public class TranslationService {
 
-    private static final Logger logger = LoggerFactory.getLogger(TranslationService.class);
-
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-    private final String apiEmail;
 
-    public TranslationService(RestTemplate restTemplate,
-                              ObjectMapper objectMapper,
-                              @Value("${translator.api.email:sujitverma0.00000@gmail.com}") String apiEmail) {
+    @Value("${TRANSLATOR_API_EMAIL}")
+    private String apiEmail;
+
+    public TranslationService(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
-        this.apiEmail = apiEmail;
     }
 
-    public String translate(String text, String fromLang, String toLang) {
+    public String translateText(String text, String sourceLang, String targetLang) {
+        // Attempt 1: Primary API (Google Translate - High Accuracy for Indian Languages)
         try {
-            String url = "https://api.mymemory.translated.net/get?q={q}&langpair={langpair}&de={email}";
+            return callGoogleApi(text, sourceLang, targetLang);
+        } catch (Exception e1) {
+            System.err.println("⚠️ Google Translate failed: " + e1.getMessage() + ". Initiating LibreTranslate Fallback...");
 
-            Map<String, String> uriVariables = new HashMap<>();
-            uriVariables.put("q", text);
-            uriVariables.put("langpair", fromLang + "|" + toLang);
-            uriVariables.put("email", apiEmail);
+            // Attempt 2: First Fallback (LibreTranslate)
+            try {
+                return callLibreTranslateApi(text, sourceLang, targetLang);
+            } catch (Exception e2) {
+                System.err.println("⚠️ LibreTranslate failed: " + e2.getMessage() + ". Initiating MyMemory Fallback...");
 
-            String rawJson = restTemplate.getForObject(url, String.class, uriVariables);
-
-            JsonNode root = objectMapper.readTree(rawJson);
-
-            if (root != null && root.has("responseData") && root.get("responseData").has("translatedText")) {
-                return root.path("responseData").path("translatedText").asText();
-            } else {
-                logger.warn("Unexpected JSON response from translation API: {}", rawJson);
-                return "Translation Failed: Invalid Response";
+                // Attempt 3: Final Safety Net (MyMemory)
+                try {
+                    return callMyMemoryApi(text, sourceLang, targetLang);
+                } catch (Exception e3) {
+                    System.err.println("❌ All translation APIs failed: " + e3.getMessage());
+                    return "[Translation Service Unavailable]";
+                }
             }
-
-        } catch (Exception e) {
-            logger.error("Error during translation of text: '{}' from {} to {}", text, fromLang, toLang, e);
-            return "Translation Error";
         }
+    }
+
+    // --- API 1: GOOGLE TRANSLATE (PRIMARY) ---
+    private String callGoogleApi(String text, String sourceLang, String targetLang) throws Exception {
+        String source = sourceLang.split("-")[0];
+        String target = targetLang.split("-")[0];
+
+        // FIXED: Replaced removed fromHttpUrl with fromUriString
+        String url = UriComponentsBuilder.fromUriString("https://translate.googleapis.com/translate_a/single")
+                .queryParam("client", "gtx")
+                .queryParam("sl", source)
+                .queryParam("tl", target)
+                .queryParam("dt", "t")
+                .queryParam("q", text)
+                .toUriString();
+
+        String response = restTemplate.getForObject(url, String.class);
+        JsonNode root = objectMapper.readTree(response);
+
+        // Google returns a nested JSON array. The translated text is always at [0][0][0]
+        return root.get(0).get(0).get(0).asText();
+    }
+
+    // --- API 2: LIBRE TRANSLATE (FALLBACK 1) ---
+    private String callLibreTranslateApi(String text, String sourceLang, String targetLang) throws Exception {
+        String source = sourceLang.split("-")[0];
+        String target = targetLang.split("-")[0];
+
+        String url = "https://libretranslate.com/translate";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("q", text);
+        requestBody.put("source", source);
+        requestBody.put("target", target);
+        requestBody.put("format", "text");
+
+        HttpEntity<Map<String, String>> request = new HttpEntity<>(requestBody, headers);
+
+        String response = restTemplate.postForObject(url, request, String.class);
+        JsonNode root = objectMapper.readTree(response);
+
+        if (root.has("error")) {
+            throw new RuntimeException(root.path("error").asText());
+        }
+
+        return root.path("translatedText").asText();
+    }
+
+    // --- API 3: MYMEMORY (FALLBACK 2) ---
+    private String callMyMemoryApi(String text, String sourceLang, String targetLang) throws Exception {
+        String langpair = sourceLang + "|" + targetLang;
+
+        // FIXED: Replaced removed fromHttpUrl with fromUriString
+        String url = UriComponentsBuilder.fromUriString("https://api.mymemory.translated.net/get")
+                .queryParam("q", text)
+                .queryParam("langpair", langpair)
+                .queryParam("de", apiEmail)
+                .toUriString();
+
+        String response = restTemplate.getForObject(url, String.class);
+        JsonNode root = objectMapper.readTree(response);
+
+        int responseStatus = root.path("responseData").path("status").asInt(200);
+        if (responseStatus != 200 && root.path("responseDetails").asText().contains("QUOTA")) {
+            throw new RuntimeException("MyMemory Quota Exceeded");
+        }
+
+        return root.path("responseData").path("translatedText").asText();
     }
 }
