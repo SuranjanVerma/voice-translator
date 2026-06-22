@@ -2,126 +2,165 @@ package com.translator.language_translator.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.net.URIBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URI;
-import java.util.HashMap;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 @Service
 public class TranslationService {
 
-    private final RestTemplate restTemplate;
+    private static final Logger log = LoggerFactory.getLogger(TranslationService.class);
+
+    private final CloseableHttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final List<String> fallbackApis;
 
-    @Value("${TRANSLATOR_API_EMAIL}")
-    private String apiEmail;
+    @Value("${translation.libretranslate.url:https://libretranslate.com/translate}")
+    private String libreTranslateUrl;
 
-    public TranslationService(RestTemplate restTemplate, ObjectMapper objectMapper) {
-        this.restTemplate = restTemplate;
+    @Value("${translation.libretranslate.api-key:}")
+    private String libreTranslateApiKey;
+
+    @Value("${translation.mymemory.email:}")
+    private String myMemoryEmail;
+
+    private static final String GOOGLE_FREE_URL = "https://translate.googleapis.com/translate_a/single";
+
+    public TranslationService(CloseableHttpClient httpClient,
+                              ObjectMapper objectMapper,
+                              @Value("${translation.fallback-order:google,libretranslate,mymemory}")
+                              String fallbackOrder) {
+        this.httpClient = httpClient;
         this.objectMapper = objectMapper;
+        this.fallbackApis = Arrays.asList(fallbackOrder.split(","));
     }
 
+    @Cacheable(value = "translationCache", key = "{#text, #sourceLang, #targetLang}")
     public String translate(String text, String sourceLang, String targetLang) {
-        // Attempt 1: Primary API (Google Translate)
-        try {
-            return callGoogleApi(text, sourceLang, targetLang);
-        } catch (Exception e1) {
-            System.err.println("⚠️ Google Translate failed: " + e1.getMessage() + ". Initiating LibreTranslate...");
+        String trimmedText = text.trim();
+        if (trimmedText.isEmpty()) {
+            return "";
+        }
 
-            // Attempt 2: First Fallback (LibreTranslate)
+        String src = sourceLang.contains("-") ? sourceLang.split("-")[0] : sourceLang;
+        String tgt = targetLang.contains("-") ? targetLang.split("-")[0] : targetLang;
+
+        for (String api : fallbackApis) {
             try {
-                return callLibreTranslateApi(text, sourceLang, targetLang);
-            } catch (Exception e2) {
-                System.err.println("⚠️ LibreTranslate failed: " + e2.getMessage() + ". Initiating MyMemory...");
-
-                // Attempt 3: Final Safety Net (MyMemory)
-                try {
-                    return callMyMemoryApi(text, sourceLang, targetLang);
-                } catch (Exception e3) {
-                    System.err.println("❌ All translation APIs failed: " + e3.getMessage());
-                    return "[Translation Service Unavailable]";
+                String result;
+                switch (api.toLowerCase().trim()) {
+                    case "google":
+                        result = callGoogleTranslate(trimmedText, src, tgt);
+                        break;
+                    case "libretranslate":
+                        result = callLibreTranslate(trimmedText, src, tgt);
+                        break;
+                    case "mymemory":
+                        result = callMyMemory(trimmedText, src, tgt);
+                        break;
+                    default:
+                        continue;
                 }
+                log.info("Translation succeeded via {}: {} -> {}", api, trimmedText, result);
+                return result;
+            } catch (Exception e) {
+                log.warn("{} translation failed: {}", api, e.getMessage());
             }
         }
+
+        log.error("All translation APIs failed for text: {}", trimmedText);
+        return "[Translation Unavailable]";
     }
 
-    // --- API 1: GOOGLE TRANSLATE (PRIMARY) ---
-    private String callGoogleApi(String text, String sourceLang, String targetLang) throws Exception {
-        String source = sourceLang.split("-")[0];
-        String target = targetLang.split("-")[0];
-
-        URI uri = UriComponentsBuilder.fromUriString("https://translate.googleapis.com/translate_a/single")
-                .queryParam("client", "gtx")
-                .queryParam("sl", source)
-                .queryParam("tl", target)
-                .queryParam("dt", "t")
-                .queryParam("q", text)
-                .build()
-                .toUri();
-
-        // FIX: Fetch as raw byte array to prevent Spring from corrupting the UTF-8 text
-        byte[] responseBytes = restTemplate.getForObject(uri, byte[].class);
-        JsonNode root = objectMapper.readTree(responseBytes);
-
-        return root.get(0).get(0).get(0).asText();
+    private byte[] readEntityBytes(org.apache.hc.core5.http.HttpEntity entity) throws IOException {
+        if (entity == null) {
+            return new byte[0];
+        }
+        try (InputStream is = entity.getContent()) {
+            return is.readAllBytes();
+        }
     }
 
-    // --- API 2: LIBRETRANSLATE (FALLBACK 1) ---
-    private String callLibreTranslateApi(String text, String sourceLang, String targetLang) throws Exception {
-        String source = sourceLang.split("-")[0];
-        String target = targetLang.split("-")[0];
+    // --- Google Translate (free, unofficial endpoint) ---
+    private String callGoogleTranslate(String text, String src, String tgt) throws Exception {
+        URIBuilder uriBuilder = new URIBuilder("https://translate.googleapis.com/translate_a/single?client=gtx&sl={sl}&tl={tl}&dt=t&q={q}");
+        uriBuilder.addParameter("client", "gtx");
+        uriBuilder.addParameter("sl", src);
+        uriBuilder.addParameter("tl", tgt);
+        uriBuilder.addParameter("dt", "t");
+        uriBuilder.addParameter("q", text);
 
-        String url = "https://libretranslate.com/translate";
+        HttpGet get = new HttpGet(uriBuilder.build());
+        try (CloseableHttpResponse response = httpClient.execute(get)) {
+            byte[] bytes = readEntityBytes(response.getEntity());
+            JsonNode root = objectMapper.readTree(bytes);
+            return root.get(0).get(0).get(0).asText();
+        }
+    }
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+    // --- LibreTranslate (self‑hosted or public instance) ---
+    private String callLibreTranslate(String text, String src, String tgt) throws Exception {
+        HttpPost post = new HttpPost(libreTranslateUrl);
+        post.setHeader("Content-Type", "application/json");
 
-        Map<String, String> requestBody = new HashMap<>();
-        requestBody.put("q", text);
-        requestBody.put("source", source);
-        requestBody.put("target", target);
-        requestBody.put("format", "text");
-
-        HttpEntity<Map<String, String>> request = new HttpEntity<>(requestBody, headers);
-
-        // FIX: Fetch as raw byte array
-        byte[] responseBytes = restTemplate.postForObject(url, request, byte[].class);
-        JsonNode root = objectMapper.readTree(responseBytes);
-
-        if (root.has("error")) {
-            throw new RuntimeException(root.path("error").asText());
+        Map<String, String> body = new java.util.HashMap<>();
+        body.put("q", text);
+        body.put("source", src);
+        body.put("target", tgt);
+        body.put("format", "text");
+        if (!libreTranslateApiKey.isEmpty()) {
+            body.put("api_key", libreTranslateApiKey);
         }
 
-        return root.path("translatedText").asText();
+        StringEntity entity = new StringEntity(objectMapper.writeValueAsString(body),
+                ContentType.APPLICATION_JSON);
+        post.setEntity(entity);
+
+        try (CloseableHttpResponse response = httpClient.execute(post)) {
+            byte[] bytes = readEntityBytes(response.getEntity());
+            JsonNode root = objectMapper.readTree(bytes);
+            if (root.has("error")) {
+                throw new RuntimeException(root.path("error").asText());
+            }
+            return root.path("translatedText").asText();
+        }
     }
 
-    // --- API 3: MYMEMORY (FALLBACK 2) ---
-    private String callMyMemoryApi(String text, String sourceLang, String targetLang) throws Exception {
-        String langpair = sourceLang + "|" + targetLang;
-
-        URI uri = UriComponentsBuilder.fromUriString("https://api.mymemory.translated.net/get")
-                .queryParam("q", text)
-                .queryParam("langpair", langpair)
-                .queryParam("de", apiEmail)
-                .build()
-                .toUri();
-
-        // FIX: Fetch as raw byte array
-        byte[] responseBytes = restTemplate.getForObject(uri, byte[].class);
-        JsonNode root = objectMapper.readTree(responseBytes);
-
-        int responseStatus = root.path("responseData").path("status").asInt(200);
-        if (responseStatus != 200 && root.path("responseDetails").asText().contains("QUOTA")) {
-            throw new RuntimeException("MyMemory Quota Exceeded");
+    // --- MyMemory (free, no API key) ---
+    private String callMyMemory(String text, String src, String tgt) throws Exception {
+        String langpair = src + "|" + tgt;
+        URIBuilder uriBuilder = new URIBuilder("https://api.mymemory.translated.net/get");
+        uriBuilder.addParameter("q", text);
+        uriBuilder.addParameter("langpair", langpair);
+        if (!myMemoryEmail.isEmpty()) {
+            uriBuilder.addParameter("de", myMemoryEmail);
         }
 
-        return root.path("responseData").path("translatedText").asText();
+        HttpGet get = new HttpGet(uriBuilder.build());
+        try (CloseableHttpResponse response = httpClient.execute(get)) {
+            byte[] bytes = readEntityBytes(response.getEntity());
+            JsonNode root = objectMapper.readTree(bytes);
+            JsonNode responseData = root.path("responseData");
+            int status = responseData.path("status").asInt(200);
+            if (status != 200 && responseData.path("responseDetails").asText().contains("QUOTA")) {
+                throw new RuntimeException("MyMemory quota exceeded");
+            }
+            return responseData.path("translatedText").asText();
+        }
     }
 }

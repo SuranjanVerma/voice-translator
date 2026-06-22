@@ -4,30 +4,38 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "translation_records")
+@Table(name = "translation_records",
+        indexes = @Index(name = "idx_username_timestamp", columnList = "username, timestamp"))
 public class TranslationRecord {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false, length = 50)
     private String username;
+
+    @Column(nullable = false, length = 10)
     private String sourceLang;
+
+    @Column(nullable = false, length = 10)
     private String targetLang;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String originalText;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String translatedText;
 
+    @Column(nullable = false)
     private LocalDateTime timestamp;
 
     public TranslationRecord() {
         this.timestamp = LocalDateTime.now();
     }
 
-    public TranslationRecord(String username, String sourceLang, String targetLang, String originalText, String translatedText) {
+    public TranslationRecord(String username, String sourceLang, String targetLang,
+                             String originalText, String translatedText) {
         this.username = username;
         this.sourceLang = sourceLang;
         this.targetLang = targetLang;
@@ -36,6 +44,7 @@ public class TranslationRecord {
         this.timestamp = LocalDateTime.now();
     }
 
+    // Getters and setters (inside the class)
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
