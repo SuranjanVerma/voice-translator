@@ -33,13 +33,13 @@ public class TranslationService {
         try {
             return callGoogleApi(text, sourceLang, targetLang);
         } catch (Exception e1) {
-            System.err.println("⚠️ Google Translate failed: " + e1.getMessage() + ". Initiating LibreTranslate Fallback...");
+            System.err.println("⚠️ Google Translate failed: " + e1.getMessage() + ". Initiating LibreTranslate...");
 
             // Attempt 2: First Fallback (LibreTranslate)
             try {
                 return callLibreTranslateApi(text, sourceLang, targetLang);
             } catch (Exception e2) {
-                System.err.println("⚠️ LibreTranslate failed: " + e2.getMessage() + ". Initiating MyMemory Fallback...");
+                System.err.println("⚠️ LibreTranslate failed: " + e2.getMessage() + ". Initiating MyMemory...");
 
                 // Attempt 3: Final Safety Net (MyMemory)
                 try {
@@ -57,7 +57,6 @@ public class TranslationService {
         String source = sourceLang.split("-")[0];
         String target = targetLang.split("-")[0];
 
-        // FIX: Build directly to a URI object to bypass double-encoding
         URI uri = UriComponentsBuilder.fromUriString("https://translate.googleapis.com/translate_a/single")
                 .queryParam("client", "gtx")
                 .queryParam("sl", source)
@@ -67,8 +66,9 @@ public class TranslationService {
                 .build()
                 .toUri();
 
-        String response = restTemplate.getForObject(uri, String.class);
-        JsonNode root = objectMapper.readTree(response);
+        // FIX: Fetch as raw byte array to prevent Spring from corrupting the UTF-8 text
+        byte[] responseBytes = restTemplate.getForObject(uri, byte[].class);
+        JsonNode root = objectMapper.readTree(responseBytes);
 
         return root.get(0).get(0).get(0).asText();
     }
@@ -91,8 +91,9 @@ public class TranslationService {
 
         HttpEntity<Map<String, String>> request = new HttpEntity<>(requestBody, headers);
 
-        String response = restTemplate.postForObject(url, request, String.class);
-        JsonNode root = objectMapper.readTree(response);
+        // FIX: Fetch as raw byte array
+        byte[] responseBytes = restTemplate.postForObject(url, request, byte[].class);
+        JsonNode root = objectMapper.readTree(responseBytes);
 
         if (root.has("error")) {
             throw new RuntimeException(root.path("error").asText());
@@ -105,7 +106,6 @@ public class TranslationService {
     private String callMyMemoryApi(String text, String sourceLang, String targetLang) throws Exception {
         String langpair = sourceLang + "|" + targetLang;
 
-        // FIX: Build directly to a URI object to bypass double-encoding
         URI uri = UriComponentsBuilder.fromUriString("https://api.mymemory.translated.net/get")
                 .queryParam("q", text)
                 .queryParam("langpair", langpair)
@@ -113,8 +113,9 @@ public class TranslationService {
                 .build()
                 .toUri();
 
-        String response = restTemplate.getForObject(uri, String.class);
-        JsonNode root = objectMapper.readTree(response);
+        // FIX: Fetch as raw byte array
+        byte[] responseBytes = restTemplate.getForObject(uri, byte[].class);
+        JsonNode root = objectMapper.readTree(responseBytes);
 
         int responseStatus = root.path("responseData").path("status").asInt(200);
         if (responseStatus != 200 && root.path("responseDetails").asText().contains("QUOTA")) {
