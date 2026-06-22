@@ -25,24 +25,13 @@ public class SpeechService {
     private final ConcurrentHashMap<String, Model> modelCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Recognizer> activeSessions = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
-    private Model fallbackModel;
 
     public SpeechService(@Value("${vosk.model.dir:/opt/vosk-models}") String modelDirPath,
                          ObjectMapper objectMapper) {
         this.modelsDir = new File(modelDirPath);
         this.objectMapper = objectMapper;
-
-        // Pre-load a fallback model (Hindi, as "model-in")
-        this.fallbackModel = loadModel("model-in", false);
-        if (fallbackModel == null) {
-            logger.error("CRITICAL: Fallback model (model-in) could not be loaded from {}. " +
-                    "Speech recognition will fail for unsupported languages.", modelsDir.getAbsolutePath());
-        }
     }
 
-    /**
-     * Map language codes to Vosk model folder names (must match directory names inside vosk.model.dir).
-     */
     private String mapLanguageToModelFolder(String langCode) {
         return switch (langCode) {
             case "hi-IN", "hi" -> "model-hi";
@@ -52,20 +41,21 @@ public class SpeechService {
         };
     }
 
-    /**
-     * Retrieve or load a Vosk model for the given language.
-     */
     private Model getModelForLanguage(String sourceLang) {
         String folderName = mapLanguageToModelFolder(sourceLang);
         return modelCache.computeIfAbsent(folderName, key -> {
             Model loaded = loadModel(key, true);
-            return loaded != null ? loaded : fallbackModel;
+            if (loaded == null) {
+                throw new RuntimeException(
+                        "Vosk model not found for language " + sourceLang +
+                                " (expected folder: " + key + "). " +
+                                "Please check that the model is present in " + modelsDir.getAbsolutePath()
+                );
+            }
+            return loaded;
         });
     }
 
-    /**
-     * Load a Vosk model from a subdirectory of modelsDir.
-     */
     private Model loadModel(String folderName, boolean log) {
         File modelPath = new File(modelsDir, folderName);
         if (!modelPath.exists() || !modelPath.isDirectory() || modelPath.list() == null || modelPath.list().length == 0) {
@@ -81,13 +71,6 @@ public class SpeechService {
         }
     }
 
-    // ========================
-    // BATCH TRANSCRIPTION (existing functionality)
-    // ========================
-    /**
-     * Transcribe an entire audio stream (batch mode).
-     * Suitable for REST file uploads.
-     */
     public String transcribe(InputStream audio, String sourceLang) throws Exception {
         Model model = getModelForLanguage(sourceLang);
         if (model == null) {
@@ -107,14 +90,6 @@ public class SpeechService {
         }
     }
 
-    // ========================
-    // REAL-TIME INCREMENTAL RECOGNITION (WebSocket)
-    // ========================
-
-    /**
-     * Start a new speech recognition session.
-     * @return session ID
-     */
     public String startSession(String sourceLang) throws Exception {
         Model model = getModelForLanguage(sourceLang);
         if (model == null) {
@@ -127,12 +102,6 @@ public class SpeechService {
         return sessionId;
     }
 
-    /**
-     * Process an audio chunk from an active session.
-     * Returns a JSON string with keys:
-     *   "text"   - current partial/final text
-     *   "final"  - true if this is the final result (user stopped speaking)
-     */
     public String processChunk(String sessionId, byte[] audioBytes, int numBytes) throws Exception {
         Recognizer recognizer = activeSessions.get(sessionId);
         if (recognizer == null) {
@@ -141,26 +110,12 @@ public class SpeechService {
         if (numBytes > 0) {
             recognizer.acceptWaveForm(audioBytes, numBytes);
         }
-        // Get partial result (non‑final)
         String partial = recognizer.getPartialResult();
         JsonNode partialNode = objectMapper.readTree(partial);
         String partialText = partialNode.path("partial").asText("");
-
-        boolean finalResult = false;
-        // Check if we have a final result (e.g., after silence)
-        // Vosk returns final result when acceptWaveForm returns true;
-        // but in our loop we simply return what we have. We'll rely on client to signal stop.
-        // Alternative: we can detect final via recognizer.getResult() but only after full stream.
-        // For real-time, we'll keep returning partial; final will be handled when stopSession is called.
-
-        // For simplicity, always return as partial until stopSession.
-        // This ensures "real‑time" feel.
         return objectMapper.writeValueAsString(Map.of("text", partialText, "final", false));
     }
 
-    /**
-     * Stop a session and return the final recognized text.
-     */
     public String stopSession(String sessionId) throws Exception {
         Recognizer recognizer = activeSessions.remove(sessionId);
         if (recognizer == null) {
@@ -174,7 +129,6 @@ public class SpeechService {
         return finalText;
     }
 
-    // Cleanup on bean destroy
     @PreDestroy
     public void cleanup() {
         logger.info("Shutting down SpeechService. Closing all active sessions and models...");
@@ -183,8 +137,5 @@ public class SpeechService {
         }
         activeSessions.clear();
         modelCache.values().forEach(Model::close);
-        if (fallbackModel != null && !modelCache.containsValue(fallbackModel)) {
-            fallbackModel.close();
-        }
     }
 }
