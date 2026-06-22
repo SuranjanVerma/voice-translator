@@ -27,7 +27,8 @@ public class TranslationService {
         this.objectMapper = objectMapper;
     }
 
-    public String translateText(String text, String sourceLang, String targetLang) {
+    // FIXED: Renamed from 'translateText' to 'translate' to match your Controller
+    public String translate(String text, String sourceLang, String targetLang) {
         // Attempt 1: Primary API (Google Translate - High Accuracy for Indian Languages)
         try {
             return callGoogleApi(text, sourceLang, targetLang);
@@ -56,7 +57,6 @@ public class TranslationService {
         String source = sourceLang.split("-")[0];
         String target = targetLang.split("-")[0];
 
-        // FIXED: Replaced removed fromHttpUrl with fromUriString
         String url = UriComponentsBuilder.fromUriString("https://translate.googleapis.com/translate_a/single")
                 .queryParam("client", "gtx")
                 .queryParam("sl", source)
@@ -72,7 +72,7 @@ public class TranslationService {
         return root.get(0).get(0).get(0).asText();
     }
 
-    // --- API 2: LIBRE TRANSLATE (FALLBACK 1) ---
+    // --- API 2: LIBRETRANSLATE (FALLBACK 1) ---
     private String callLibreTranslateApi(String text, String sourceLang, String targetLang) throws Exception {
         String source = sourceLang.split("-")[0];
         String target = targetLang.split("-")[0];
@@ -104,7 +104,6 @@ public class TranslationService {
     private String callMyMemoryApi(String text, String sourceLang, String targetLang) throws Exception {
         String langpair = sourceLang + "|" + targetLang;
 
-        // FIXED: Replaced removed fromHttpUrl with fromUriString
         String url = UriComponentsBuilder.fromUriString("https://api.mymemory.translated.net/get")
                 .queryParam("q", text)
                 .queryParam("langpair", langpair)
