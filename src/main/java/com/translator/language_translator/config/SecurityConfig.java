@@ -21,28 +21,23 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // 1. CSRF: enabled for browser safety, but ignored for REST API endpoints
+                // CSRF: ignored for APIs, WebSocket, and the login POST
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()) // makes token accessible to JS if needed
-                        .ignoringRequestMatchers("/api/**", "/ws/**")   // safe because APIs use separate auth (JWT or session cookie)
+                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .ignoringRequestMatchers("/api/**", "/ws/**", "/login")   // ← "/login" added
                 )
 
-                // 2. Endpoint access rules
                 .authorizeHttpRequests(auth -> auth
-                        // Public pages & endpoints
                         .requestMatchers(
                                 "/login.html", "/login",
                                 "/css/**", "/js/**", "/images/**", "/favicon.ico",
                                 "/error",
-                                "/api/auth/**"       // registration & login API
+                                "/api/auth/**"
                         ).permitAll()
-                        // WebSocket endpoint (must be authenticated – handshake uses session cookie)
                         .requestMatchers("/ws/**").authenticated()
-                        // Everything else requires authentication
                         .anyRequest().authenticated()
                 )
 
-                // 3. Custom form login
                 .formLogin(form -> form
                         .loginPage("/login.html")
                         .loginProcessingUrl("/login")
@@ -51,7 +46,6 @@ public class SecurityConfig {
                         .permitAll()
                 )
 
-                // 4. Logout
                 .logout(logout -> logout
                         .logoutUrl("/logout")
                         .logoutSuccessUrl("/login.html?logout=true")
@@ -66,15 +60,10 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    /**
-     * CORS configuration – adjust allowed origins as needed.
-     * On Render, frontend and backend are on the same domain, so CORS is not
-     * required in production, but this bean enables local development on different ports.
-     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:8089", "http://localhost:3000")); // add your dev origins
+        configuration.setAllowedOrigins(List.of("http://localhost:8089", "http://localhost:3000"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
