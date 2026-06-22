@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -27,9 +28,8 @@ public class TranslationService {
         this.objectMapper = objectMapper;
     }
 
-    // FIXED: Renamed from 'translateText' to 'translate' to match your Controller
     public String translate(String text, String sourceLang, String targetLang) {
-        // Attempt 1: Primary API (Google Translate - High Accuracy for Indian Languages)
+        // Attempt 1: Primary API (Google Translate)
         try {
             return callGoogleApi(text, sourceLang, targetLang);
         } catch (Exception e1) {
@@ -57,18 +57,19 @@ public class TranslationService {
         String source = sourceLang.split("-")[0];
         String target = targetLang.split("-")[0];
 
-        String url = UriComponentsBuilder.fromUriString("https://translate.googleapis.com/translate_a/single")
+        // FIX: Build directly to a URI object to bypass double-encoding
+        URI uri = UriComponentsBuilder.fromUriString("https://translate.googleapis.com/translate_a/single")
                 .queryParam("client", "gtx")
                 .queryParam("sl", source)
                 .queryParam("tl", target)
                 .queryParam("dt", "t")
                 .queryParam("q", text)
-                .toUriString();
+                .build()
+                .toUri();
 
-        String response = restTemplate.getForObject(url, String.class);
+        String response = restTemplate.getForObject(uri, String.class);
         JsonNode root = objectMapper.readTree(response);
 
-        // Google returns a nested JSON array. The translated text is always at [0][0][0]
         return root.get(0).get(0).get(0).asText();
     }
 
@@ -104,13 +105,15 @@ public class TranslationService {
     private String callMyMemoryApi(String text, String sourceLang, String targetLang) throws Exception {
         String langpair = sourceLang + "|" + targetLang;
 
-        String url = UriComponentsBuilder.fromUriString("https://api.mymemory.translated.net/get")
+        // FIX: Build directly to a URI object to bypass double-encoding
+        URI uri = UriComponentsBuilder.fromUriString("https://api.mymemory.translated.net/get")
                 .queryParam("q", text)
                 .queryParam("langpair", langpair)
                 .queryParam("de", apiEmail)
-                .toUriString();
+                .build()
+                .toUri();
 
-        String response = restTemplate.getForObject(url, String.class);
+        String response = restTemplate.getForObject(uri, String.class);
         JsonNode root = objectMapper.readTree(response);
 
         int responseStatus = root.path("responseData").path("status").asInt(200);
