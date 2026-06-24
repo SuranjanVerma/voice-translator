@@ -1,11 +1,11 @@
 package com.translator.language_translator.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "translation_records",
-        indexes = @Index(name = "idx_username_timestamp", columnList = "username, timestamp"))
+@Table(name = "translation_records")
 public class TranslationRecord {
 
     @Id
@@ -27,6 +27,8 @@ public class TranslationRecord {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String translatedText;
 
+    // This annotation stops the JSON parser from crashing!
+    @JsonIgnore
     @Column(nullable = false)
     private LocalDateTime timestamp;
 
@@ -44,7 +46,6 @@ public class TranslationRecord {
         this.timestamp = LocalDateTime.now();
     }
 
-    // Getters and setters (inside the class)
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
