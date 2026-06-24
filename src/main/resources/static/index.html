@@ -144,6 +144,7 @@
             </div>
             Translation History
         </h2>
+        <button id="clearHistoryBtn" class="text-xs text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2.5 rounded-xl font-bold border border-red-200">Clear All</button>
     </div>
 
     <div class="overflow-hidden rounded-3xl border border-white bg-white/90 shadow-sm">
@@ -181,35 +182,22 @@
     const originalOutput = document.getElementById('originalText');
     const translatedOutput = document.getElementById('translatedText');
 
-    // --- 1. History Loading Logic ---
     async function loadHistory() {
         const tableBody = document.getElementById('historyTableBody');
         try {
             const response = await fetch('/api/history');
-            if (!response.ok) throw new Error("Failed to load history");
-
+            if (!response.ok) throw new Error("Failed to load");
             const historyData = await response.json();
-            tableBody.innerHTML = '';
-
-            if (historyData.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="3" class="px-8 py-12 text-center text-slate-500 font-semibold">No translation records found.</td></tr>`;
-                return;
-            }
-
-            historyData.forEach(record => {
-                const row = document.createElement('tr');
-                row.className = "hover:bg-indigo-50/40 transition-colors duration-150";
-                row.innerHTML = `
-                    <td class="px-8 py-6 font-semibold text-slate-700 leading-relaxed border-r border-slate-100">"${record.originalText}"</td>
-                    <td class="px-8 py-6 text-indigo-700 font-black leading-relaxed border-r border-slate-100">${record.translatedText}</td>
-                    <td class="px-8 py-6 text-center">
-                        <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 uppercase tracking-widest shadow-sm border border-slate-200/50">
-                            ${record.sourceLang} → ${record.targetLang}
-                        </span>
-                    </td>
-                `;
-                tableBody.appendChild(row);
-            });
+            tableBody.innerHTML = historyData.length === 0
+                ? '<tr><td colspan="3" class="px-8 py-12 text-center text-slate-500 font-semibold">No records.</td></tr>'
+                : historyData.map(record => `
+                    <tr class="hover:bg-indigo-50/40 transition-colors duration-150">
+                        <td class="px-8 py-6 font-semibold text-slate-700 leading-relaxed border-r border-slate-100">"${record.originalText}"</td>
+                        <td class="px-8 py-6 text-indigo-700 font-black leading-relaxed border-r border-slate-100">${record.translatedText}</td>
+                        <td class="px-8 py-6 text-center">
+                            <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 uppercase tracking-widest border border-slate-200/50">${record.sourceLang} → ${record.targetLang}</span>
+                        </td>
+                    </tr>`).join('');
         } catch (error) {
             tableBody.innerHTML = `<tr><td colspan="3" class="px-8 py-12 text-center text-red-500 font-bold">Connection error. Could not retrieve history.</td></tr>`;
         }
@@ -217,156 +205,83 @@
 
     window.addEventListener('DOMContentLoaded', loadHistory);
 
-    // --- 2. Auto Text-to-Speech Logic ---
-    // Extracted into a function so we can call it automatically or manually
+    // MODIFIED: Clear History Logic
+    document.getElementById('clearHistoryBtn').addEventListener('click', async () => {
+        if(confirm("Delete all history?")) {
+            await fetch('/api/history', { method: 'DELETE' });
+            loadHistory();
+        }
+    });
+
     function speakTranslation(textToRead) {
         if (!textToRead || textToRead === "Translating..." || textToRead === "Translation will appear here...") return;
-
-        const selectedLang = document.getElementById('targetLang').value;
-        const voiceMap = {
-            'hi': 'hi-IN', 'es': 'es-ES', 'fr': 'fr-FR', 'or': 'or-IN',
-            'bn': 'bn-IN', 'zh': 'zh-CN', 'de': 'de-DE', 'ru': 'ru-RU',
-            'en': 'en-US', 'mr': 'mr-IN', 'ta': 'ta-IN'
-        };
-        const targetLangCode = voiceMap[selectedLang] || 'en-US';
         const utterance = new SpeechSynthesisUtterance(textToRead);
-        utterance.lang = targetLangCode;
-        utterance.rate = 0.9;
-
-        const voices = window.speechSynthesis.getVoices();
-        const nativeVoice = voices.find(voice => voice.lang.toLowerCase().startsWith(selectedLang.toLowerCase()));
-        if (nativeVoice) utterance.voice = nativeVoice;
-
-        window.speechSynthesis.cancel(); // Stop any currently playing audio
+        utterance.lang = document.getElementById('targetLang').value;
         window.speechSynthesis.speak(utterance);
     }
 
-    // Manual play button
-    playBtn.addEventListener('click', () => {
-        speakTranslation(translatedOutput.innerText);
-    });
-
-    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
-
-    // --- 3. WebSocket Real-Time Streaming Logic ---
-    recordBtn.addEventListener('click', async () => {
-        if (isRecording) {
-            stopRecording();
-        } else {
-            await startRecording();
-        }
-    });
+    playBtn.addEventListener('click', () => speakTranslation(translatedOutput.innerText));
 
     async function startRecording() {
-        const sourceLang = document.getElementById("sourceLang").value;
-        const targetLang = document.getElementById("targetLang").value;
-
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/speech?sourceLang=${sourceLang}&targetLang=${targetLang}`;
-
+        const wsUrl = `${protocol}//${window.location.host}/ws/speech?sourceLang=${document.getElementById("sourceLang").value}&targetLang=${document.getElementById("targetLang").value}`;
         socket = new WebSocket(wsUrl);
-
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-
-            if (data.status === "ready") {
-                originalOutput.innerText = "Listening...";
-                translatedOutput.innerText = "Translation will appear here...";
-            } else if (data.original) {
+        socket.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if(data.original) {
                 originalOutput.innerText = `"${data.original}"`;
-
-                if (data.translated && data.translated.trim() !== "") {
-                    translatedOutput.innerText = data.translated;
-                    playBtn.classList.remove('hidden');
-                } else if (data.original.trim().length > 0) {
-                    translatedOutput.innerText = "Translating...";
-                }
+                translatedOutput.innerText = data.translated || "Translating...";
+                if(data.translated) playBtn.classList.remove('hidden');
             }
         };
 
-        socket.onerror = (err) => {
-            console.error("WebSocket Error:", err);
-            originalOutput.innerText = "Connection lost.";
-            stopRecording();
+        globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new AudioContext({ sampleRate: 16000 });
+        const input = audioContext.createMediaStreamSource(globalStream);
+        processor = audioContext.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (e) => {
+            if (socket.readyState === WebSocket.OPEN) {
+                const pcm = new Int16Array(e.inputBuffer.getChannelData(0).map(s => Math.max(-1, Math.min(1, s)) * 32767));
+                socket.send(pcm.buffer);
+            }
         };
-
-        socket.onclose = () => {
-            // Clean up UI if server drops connection unexpectedly
-            if (isRecording) stopRecording();
-        };
-
-        try {
-            globalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-
-            const input = audioContext.createMediaStreamSource(globalStream);
-            processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-            processor.onaudioprocess = (e) => {
-                if (!isRecording || socket.readyState !== WebSocket.OPEN) return;
-
-                const inputData = e.inputBuffer.getChannelData(0);
-                const pcmData = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) {
-                    pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
-                }
-                socket.send(pcmData.buffer);
-            };
-
-            input.connect(processor);
-            processor.connect(audioContext.destination);
-
-            isRecording = true;
-            btnText.innerText = "Stop Streaming";
-            recordBtn.className = "group relative w-full md:w-[60%] bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold py-5 px-6 rounded-2xl transition-all duration-300 shadow-xl shadow-red-500/30 transform hover:-translate-y-1 flex justify-center items-center gap-3 z-10 animate-pulse border border-red-500";
-            micIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />`;
-            statusEl.classList.remove('hidden');
-            playBtn.classList.add('hidden');
-
-        } catch (err) {
-            alert("Microphone access denied. Please check your browser permissions.");
-        }
+        input.connect(processor);
+        processor.connect(audioContext.destination);
+        isRecording = true;
+        btnText.innerText = "Stop Streaming";
+        statusEl.classList.remove('hidden');
     }
 
+    // MODIFIED: stopRecording with placeholder blocking
     function stopRecording() {
-        if (!isRecording) return;
         isRecording = false;
+        if(socket) socket.close();
+        if(globalStream) globalStream.getTracks().forEach(t => t.stop());
 
-        btnText.innerText = "Start Streaming";
-        recordBtn.className = "group relative w-full md:w-[60%] bg-slate-900 hover:bg-slate-800 text-white font-bold py-5 px-6 rounded-2xl transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-1 flex justify-center items-center gap-3 z-10 border border-slate-700";
-        micIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />`;
-        statusEl.classList.add('hidden');
-
-        if (processor) processor.disconnect();
-        if (audioContext) audioContext.close();
-        if (globalStream) globalStream.getTracks().forEach(track => track.stop());
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.close();
-        }
-
-        // Clean up the text for saving
         const finalOriginal = originalOutput.innerText.replace(/"/g, '').trim();
         const finalTranslated = translatedOutput.innerText.trim();
+        const isPlaceholder = finalOriginal === "Listening..." || finalTranslated === "Translating..." || finalTranslated === "Translation will appear here..." || finalTranslated === "-";
 
-        // 1. Speak the final result automatically
         speakTranslation(finalTranslated);
 
-        // 2. NEW LOGIC: Save to the REST API, then reload the history table
-        if (finalOriginal && finalTranslated && finalTranslated !== "Translating..." && finalTranslated !== "-") {
+        if (finalOriginal && finalTranslated && !isPlaceholder) {
             fetch('/api/history/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sourceLang: document.getElementById('sourceLang').value,
                     targetLang: document.getElementById('targetLang').value,
-                    originalText: finalOriginal,
+                    originalText: finalOriginal.replace(/"/g, ''),
                     translatedText: finalTranslated
                 })
-            }).then(() => loadHistory()); // Reload strictly AFTER the save completes
-        } else {
-            loadHistory();
+            }).then(loadHistory);
         }
+
+        btnText.innerText = "Start Streaming";
+        statusEl.classList.add('hidden');
     }
+
+    recordBtn.addEventListener('click', () => isRecording ? stopRecording() : startRecording());
 </script>
 </body>
 </html>

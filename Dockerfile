@@ -2,8 +2,9 @@
 FROM maven:3.9-eclipse-temurin-17 AS builder
 WORKDIR /app
 
+# 1. Copy POM first to cache Maven dependencies
 COPY pom.xml .
-COPY src ./src
+RUN mvn dependency:go-offline -B
 
 # Install tools for downloading and unzipping Vosk models
 RUN apt-get update && apt-get install -y wget unzip && rm -rf /var/lib/apt/lists/*
@@ -11,13 +12,13 @@ RUN apt-get update && apt-get install -y wget unzip && rm -rf /var/lib/apt/lists
 # Create model storage directory
 RUN mkdir -p /opt/vosk-models
 
-# Download English-Indian model (fallback)
+# 2. Download all models BEFORE copying source code.
+# This ensures these massive layers are cached even when your Java code changes.
 RUN wget -q -O model-in.zip https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip && \
     unzip -q model-in.zip && \
     mv vosk-model-small-en-in-0.4 /opt/vosk-models/model-in && \
     rm model-in.zip
 
-# Download US English model
 RUN wget -q -O model-en.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip && \
     unzip -q model-en.zip && \
     mv vosk-model-small-en-us-0.15 /opt/vosk-models/model-en && \
@@ -32,13 +33,14 @@ RUN wget -q -O model-hi.zip https://alphacephei.com/vosk/models/vosk-model-small
     test -f /opt/vosk-models/model-hi/am/final.mdl || \
     (echo "FAILED to validate Hindi model" && exit 1)
 
-# Download Telugu model
 RUN wget -q -O model-te.zip https://alphacephei.com/vosk/models/vosk-model-small-te-0.42.zip && \
     unzip -q model-te.zip && \
     mv vosk-model-small-te-0.42 /opt/vosk-models/model-te && \
     rm model-te.zip
 
-# Build the application
+# 3. NOW copy the source code and build.
+# Rebuilds will now start from this step, skipping the model downloads entirely.
+COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Stage 2: Production Environment
@@ -58,4 +60,5 @@ ENV vosk.model.dir=/opt/vosk-models
 ENV PORT=8080
 EXPOSE 8080
 
-ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "app.jar"]
+# Removed the native-access flag for Java 17 stability
+ENTRYPOINT ["java", "-jar", "app.jar"]

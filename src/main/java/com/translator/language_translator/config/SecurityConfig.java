@@ -31,15 +31,24 @@ public class SecurityConfig {
                 // Enable CORS integration with the SecurityFilterChain
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
+                // ... inside your filterChain bean ...
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/login.html", "/login",
                                 "/css/**", "/js/**", "/images/**", "/favicon.ico",
                                 "/error",
-                                "/api/auth/**"
+                                // Explicitly permit your auth API endpoints
+                                "/api/auth/register",
+                                "/api/auth/reset",
+                                "/api/auth/check-user"
                         ).permitAll()
                         .requestMatchers("/ws/**").authenticated()
                         .anyRequest().authenticated()
+                )
+                // CSRF: explicitly ignore your new auth APIs
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .ignoringRequestMatchers("/api/**", "/ws/**", "/login", "/api/auth/**")
                 )
 
                 .formLogin(form -> form

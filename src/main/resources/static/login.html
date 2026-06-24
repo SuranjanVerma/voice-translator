@@ -168,18 +168,12 @@
     // --- Pre-Login Check Logic ---
     async function handlePreLogin(event) {
         event.preventDefault();
-        const form = event.target;
         const username = document.getElementById('loginUsername').value;
         const notification = document.getElementById('notification');
         const loginBtn = document.getElementById('loginBtn');
 
         loginBtn.disabled = true;
-        loginBtn.innerText = "Checking...";
-
-        const csrfToken = getCsrfTokenFromCookie();
-        if (csrfToken) {
-            document.getElementById('csrfToken').value = csrfToken;
-        }
+        loginBtn.innerText = "Authenticating...";
 
         try {
             const checkRes = await fetch(`/api/auth/check-user?username=${encodeURIComponent(username)}`);
@@ -187,30 +181,30 @@
 
             if (!checkData.exists) {
                 notification.className = "mb-4 p-3 rounded text-sm text-center font-semibold bg-red-100 text-red-700";
-                notification.innerText = "User does not exist. Please create an account first.";
+                notification.innerText = "User does not exist.";
                 notification.classList.remove('hidden');
                 loginBtn.disabled = false;
                 loginBtn.innerText = "Login";
                 return;
             }
 
-            loginBtn.innerText = "Authenticating...";
-            form.submit();
-
+            const csrfToken = getCsrfTokenFromCookie();
+            if (csrfToken) {
+                document.getElementById('csrfToken').value = csrfToken;
+            }
+            event.target.submit();
         } catch (error) {
             notification.className = "mb-4 p-3 rounded text-sm text-center font-semibold bg-red-100 text-red-700";
-            notification.innerText = "An error occurred connecting to the server.";
+            notification.innerText = "Server connection error.";
             notification.classList.remove('hidden');
             loginBtn.disabled = false;
             loginBtn.innerText = "Login";
         }
     }
 
-    // --- Registration Logic (Updated for JSON payload) ---
+    // --- Registration Logic ---
     async function handleRegister(event) {
         event.preventDefault();
-
-        // Build the JSON payload to match the Java 17 Record DTO
         const payload = {
             username: document.getElementById('regUsername').value,
             password: document.getElementById('regPassword').value,
@@ -225,7 +219,6 @@
                 body: JSON.stringify(payload)
             });
 
-            // Parse the JSON Map.of() response from the backend
             const resultData = await response.json();
             const notification = document.getElementById('notification');
             notification.classList.remove('hidden');
@@ -235,7 +228,6 @@
                 notification.innerText = resultData.message || "Success! You can now log in.";
                 event.target.reset();
                 toggleView('login');
-                notification.classList.remove('hidden');
             } else {
                 notification.className = "mb-4 p-3 rounded text-sm text-center font-semibold bg-red-100 text-red-700";
                 notification.innerText = resultData.error || "Registration failed.";
@@ -245,11 +237,9 @@
         }
     }
 
-    // --- Reset Logic (Updated for JSON payload) ---
+    // --- Reset Logic ---
     async function handleReset(event) {
         event.preventDefault();
-
-        // Build the JSON payload to match the Java 17 Record DTO
         const payload = {
             username: document.getElementById('resetUsername').value,
             securityAnswer: document.getElementById('resetAnswer').value,
@@ -263,7 +253,6 @@
                 body: JSON.stringify(payload)
             });
 
-            // Parse the JSON Map.of() response from the backend
             const resultData = await response.json();
             const notification = document.getElementById('notification');
             notification.classList.remove('hidden');
@@ -273,7 +262,6 @@
                 notification.innerText = resultData.message || "Password reset successfully.";
                 event.target.reset();
                 toggleView('login');
-                notification.classList.remove('hidden');
             } else {
                 notification.className = "mb-4 p-3 rounded text-sm text-center font-semibold bg-red-100 text-red-700";
                 notification.innerText = resultData.error || "Password reset failed.";
