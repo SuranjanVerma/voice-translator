@@ -32,6 +32,28 @@ public class TranslatorController {
         this.repository = repository;
     }
 
+    // NEW: Java 17 Record to map the incoming JSON payload from the frontend
+    public record HistorySaveRequest(String sourceLang, String targetLang, String originalText, String translatedText) {}
+
+    // NEW: Bulletproof REST endpoint to save history with guaranteed Spring Security Context
+    @PostMapping("/history/save")
+    public ResponseEntity<?> saveHistory(@RequestBody HistorySaveRequest request, Authentication auth) {
+        if (auth == null || !auth.isAuthenticated() || auth.getName().equals("anonymousUser")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Unauthorized"));
+        }
+
+        TranslationRecord record = new TranslationRecord(
+                auth.getName(), // Guaranteed to be the logged-in user
+                request.sourceLang(),
+                request.targetLang(),
+                request.originalText(),
+                request.translatedText()
+        );
+        repository.save(record);
+
+        return ResponseEntity.ok(Map.of("message", "History saved successfully"));
+    }
+
     @PostMapping("/translate")
     public ResponseEntity<?> handleTranslation(
             @RequestParam("audio") MultipartFile audio,
@@ -39,19 +61,33 @@ public class TranslatorController {
             @RequestParam("targetLang") String targetLang,
             Authentication auth) {
 
-        // Use try-with-resources to ensure the InputStream is properly closed
-        try (InputStream audioStream = audio.getInputStream()) {
+        if (audio.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Audio file is empty."));
+        }
 
-            // *** The crucial fix: pass sourceLang to transcribe ***
+        String contentType = audio.getContentType();
+        String filename = audio.getOriginalFilename();
+        boolean isWav = (contentType != null && contentType.contains("wav")) ||
+                (filename != null && filename.toLowerCase().endsWith(".wav"));
+
+        if (!isWav) {
+            return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                    .body(Map.of("error", "Invalid format. Please upload a 16kHz mono WAV file."));
+        }
+
+        try (InputStream audioStream = audio.getInputStream()) {
             String originalText = speechService.transcribe(audioStream, sourceLang);
 
             if (originalText == null || originalText.isBlank()) {
-                return ResponseEntity.badRequest().body("No speech detected.");
+                return ResponseEntity.badRequest().body(Map.of("error", "No speech detected."));
             }
 
             String translatedText = translationService.translate(originalText, sourceLang, targetLang);
 
-            String username = (auth != null && auth.isAuthenticated()) ? auth.getName() : "anonymous";
+            String username = (auth != null && auth.isAuthenticated() && !auth.getName().equals("anonymousUser"))
+                    ? auth.getName()
+                    : "anonymous";
+
             TranslationRecord record = new TranslationRecord(username, sourceLang, targetLang, originalText, translatedText);
             repository.save(record);
 
@@ -64,17 +100,15 @@ public class TranslatorController {
             logger.error("Error during speech translation process for user: {}",
                     (auth != null ? auth.getName() : "anonymous"), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("System Error: " + e.getMessage());
+                    .body(Map.of("error", "System Error: " + e.getMessage()));
         }
     }
 
     @GetMapping("/history")
     public ResponseEntity<?> getHistory(Authentication auth) {
-        // If Spring Security is configured tightly, it might block unauthenticated
-        // requests before they even hit this controller, but this is a good safety net.
-        if (auth == null || !auth.isAuthenticated()) {
+        if (auth == null || !auth.isAuthenticated() || auth.getName().equals("anonymousUser")) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body("Error: User must be logged in to view history.");
+                    .body(Map.of("error", "User must be logged in to view history."));
         }
 
         try {
@@ -83,7 +117,7 @@ public class TranslatorController {
         } catch (Exception e) {
             logger.error("Error fetching translation history for user: {}", auth.getName(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error fetching history.");
+                    .body(Map.of("error", "Error fetching history."));
         }
     }
 }

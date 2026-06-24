@@ -54,6 +54,8 @@ COPY --from=builder /opt/vosk-models /opt/vosk-models
 # Set the model directory for Spring Boot
 ENV vosk.model.dir=/opt/vosk-models
 
+# Use Railway's dynamic PORT (fallback to 8080 for local)
+ENV PORT=8080
 EXPOSE 8080
 
 ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "app.jar"]

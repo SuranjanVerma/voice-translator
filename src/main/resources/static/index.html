@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gray United Voice Translator</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/RecordRTC/5.6.2/RecordRTC.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
 
-        /* Original Light Glassmorphism */
         .glass-panel {
             background: rgba(255, 255, 255, 0.70);
             backdrop-filter: blur(16px);
@@ -19,7 +17,6 @@
             box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.08);
         }
 
-        /* Background Orb Animations */
         @keyframes float {
             0% { transform: translate(0px, 0px) scale(1); }
             33% { transform: translate(30px, -50px) scale(1.1); }
@@ -46,7 +43,7 @@
             <span class="text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-orange-500">Gray United</span> <br class="md:hidden" />
             <span class="text-slate-900">Voice Translator</span>
         </h1>
-        <p class="text-slate-500 font-semibold uppercase tracking-[0.2em] text-xs md:text-sm">Offline Speech Processing</p>
+        <p class="text-slate-500 font-semibold uppercase tracking-[0.2em] text-xs md:text-sm">Real-Time Streaming Engine</p>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 mb-12 relative z-10 px-0 md:px-8">
@@ -100,7 +97,7 @@
             <svg id="micIcon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
-            <span id="btnText" class="text-lg tracking-wide">Start Recording</span>
+            <span id="btnText" class="text-lg tracking-wide">Start Streaming</span>
         </button>
     </div>
 
@@ -110,20 +107,20 @@
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
               <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
             </span>
-            Recording audio stream...
+            Live connection active...
         </div>
     </div>
 
     <div class="mt-12 pt-10 border-t border-slate-200 relative z-10">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="bg-indigo-50/80 rounded-3xl p-8 border border-white shadow-sm relative group">
-                <h3 class="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-4 text-center md:text-left">Transcription (Source)</h3>
+                <h3 class="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-4 text-center md:text-left">Live Transcription</h3>
                 <p id="originalText" class="text-slate-800 text-lg leading-relaxed min-h-[3rem] font-bold text-center md:text-left">-</p>
             </div>
 
             <div class="bg-indigo-50/80 rounded-3xl p-8 border border-white shadow-sm relative group">
                 <div class="flex justify-center md:justify-between items-start mb-4">
-                    <h3 class="text-[11px] font-black text-slate-900 uppercase tracking-widest">Translation Result</h3>
+                    <h3 class="text-[11px] font-black text-slate-900 uppercase tracking-widest">Live Translation</h3>
 
                     <button id="playBtn" class="hidden absolute top-6 right-6 md:relative md:top-auto md:right-auto text-indigo-500 hover:text-indigo-700 transition-colors p-2 -mt-2 -mr-2 rounded-full hover:bg-white focus:outline-none ring-1 ring-indigo-200 shadow-sm" title="Read Aloud">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -131,7 +128,7 @@
                         </svg>
                     </button>
                 </div>
-                <p id="translatedText" class="text-indigo-950 text-2xl font-black leading-relaxed min-h-[3rem] text-center md:text-left">-</p>
+                <p id="translatedText" class="text-indigo-950 text-lg font-bold leading-relaxed min-h-[3rem] text-center md:text-left">-</p>
             </div>
         </div>
     </div>
@@ -170,18 +167,23 @@
 </div>
 
 <script>
-    let recorder;
-    let microphone;
+    let socket = null;
+    let audioContext = null;
+    let processor = null;
+    let globalStream = null;
+    let isRecording = false;
+
     const recordBtn = document.getElementById('recordBtn');
     const statusEl = document.getElementById('status');
     const btnText = document.getElementById('btnText');
     const playBtn = document.getElementById('playBtn');
     const micIcon = document.getElementById('micIcon');
+    const originalOutput = document.getElementById('originalText');
+    const translatedOutput = document.getElementById('translatedText');
 
     // --- 1. History Loading Logic ---
     async function loadHistory() {
         const tableBody = document.getElementById('historyTableBody');
-
         try {
             const response = await fetch('/api/history');
             if (!response.ok) throw new Error("Failed to load history");
@@ -190,14 +192,13 @@
             tableBody.innerHTML = '';
 
             if (historyData.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="3" class="px-8 py-12 text-center text-slate-500 font-semibold">No translation records found in the database.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="3" class="px-8 py-12 text-center text-slate-500 font-semibold">No translation records found.</td></tr>`;
                 return;
             }
 
             historyData.forEach(record => {
                 const row = document.createElement('tr');
                 row.className = "hover:bg-indigo-50/40 transition-colors duration-150";
-
                 row.innerHTML = `
                     <td class="px-8 py-6 font-semibold text-slate-700 leading-relaxed border-r border-slate-100">"${record.originalText}"</td>
                     <td class="px-8 py-6 text-indigo-700 font-black leading-relaxed border-r border-slate-100">${record.translatedText}</td>
@@ -210,122 +211,162 @@
                 tableBody.appendChild(row);
             });
         } catch (error) {
-            console.error("History Error:", error);
             tableBody.innerHTML = `<tr><td colspan="3" class="px-8 py-12 text-center text-red-500 font-bold">Connection error. Could not retrieve history.</td></tr>`;
         }
     }
 
     window.addEventListener('DOMContentLoaded', loadHistory);
 
-// --- 2. Text-to-Speech Logic ---
-    playBtn.addEventListener('click', () => {
-        const textToRead = document.getElementById('translatedText').innerText;
-        const selectedLang = document.getElementById('targetLang').value;
+    // --- 2. Auto Text-to-Speech Logic ---
+    // Extracted into a function so we can call it automatically or manually
+    function speakTranslation(textToRead) {
+        if (!textToRead || textToRead === "Translating..." || textToRead === "Translation will appear here...") return;
 
+        const selectedLang = document.getElementById('targetLang').value;
         const voiceMap = {
             'hi': 'hi-IN', 'es': 'es-ES', 'fr': 'fr-FR', 'or': 'or-IN',
             'bn': 'bn-IN', 'zh': 'zh-CN', 'de': 'de-DE', 'ru': 'ru-RU',
             'en': 'en-US', 'mr': 'mr-IN', 'ta': 'ta-IN'
         };
-
         const targetLangCode = voiceMap[selectedLang] || 'en-US';
         const utterance = new SpeechSynthesisUtterance(textToRead);
-
         utterance.lang = targetLangCode;
         utterance.rate = 0.9;
 
         const voices = window.speechSynthesis.getVoices();
         const nativeVoice = voices.find(voice => voice.lang.toLowerCase().startsWith(selectedLang.toLowerCase()));
+        if (nativeVoice) utterance.voice = nativeVoice;
 
-        if (nativeVoice) {
-            utterance.voice = nativeVoice;
-        } else {
-            console.warn(`No native voice installed for ${targetLangCode}. Falling back to default.`);
-        }
-
-        window.speechSynthesis.cancel();
+        window.speechSynthesis.cancel(); // Stop any currently playing audio
         window.speechSynthesis.speak(utterance);
+    }
+
+    // Manual play button
+    playBtn.addEventListener('click', () => {
+        speakTranslation(translatedOutput.innerText);
     });
 
-    window.speechSynthesis.onvoiceschanged = function() {
-        window.speechSynthesis.getVoices();
-    };
+    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 
-    // --- 3. Recording & Translation Logic ---
+    // --- 3. WebSocket Real-Time Streaming Logic ---
     recordBtn.addEventListener('click', async () => {
-
-        // STOP RECORDING
-        if (recorder && recorder.getState() === "recording") {
-            recorder.stopRecording(async () => {
-
-                const audioBlob = recorder.getBlob();
-                microphone.getTracks().forEach(track => track.stop());
-
-                // UI Reset to Dark Bold Button
-                btnText.innerText = "Start Recording";
-                recordBtn.className = "group relative w-full md:w-[60%] bg-slate-900 hover:bg-slate-800 text-white font-bold py-5 px-6 rounded-2xl transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-1 flex justify-center items-center gap-3 z-10 border border-slate-700";
-                micIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />`;
-                statusEl.classList.add('hidden');
-                playBtn.classList.add('hidden');
-
-                document.getElementById('originalText').innerText = "Processing audio stream...";
-                document.getElementById('translatedText').innerText = "Translating...";
-
-                // PREPARE DATA FOR BACKEND
-                const formData = new FormData();
-                formData.append("audio", audioBlob, "recording.wav");
-                formData.append("sourceLang", document.getElementById("sourceLang").value);
-                formData.append("targetLang", document.getElementById("targetLang").value);
-
-                try {
-                    const response = await fetch('/api/translate', {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    if (!response.ok) throw new Error("Translation failed");
-
-                    const data = await response.json();
-                    document.getElementById('originalText').innerText = `"${data.original}"`;
-                    document.getElementById('translatedText').innerText = data.translated;
-
-                    playBtn.classList.remove('hidden');
-                    loadHistory();
-
-                } catch (error) {
-                    console.error("Error:", error);
-                    document.getElementById('originalText').innerText = "Error connecting to server.";
-                    document.getElementById('translatedText').innerText = "Please try again.";
-                }
-            });
-            return;
+        if (isRecording) {
+            stopRecording();
+        } else {
+            await startRecording();
         }
+    });
 
-        // START RECORDING
+    async function startRecording() {
+        const sourceLang = document.getElementById("sourceLang").value;
+        const targetLang = document.getElementById("targetLang").value;
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/speech?sourceLang=${sourceLang}&targetLang=${targetLang}`;
+
+        socket = new WebSocket(wsUrl);
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.status === "ready") {
+                originalOutput.innerText = "Listening...";
+                translatedOutput.innerText = "Translation will appear here...";
+            } else if (data.original) {
+                originalOutput.innerText = `"${data.original}"`;
+
+                if (data.translated && data.translated.trim() !== "") {
+                    translatedOutput.innerText = data.translated;
+                    playBtn.classList.remove('hidden');
+                } else if (data.original.trim().length > 0) {
+                    translatedOutput.innerText = "Translating...";
+                }
+            }
+        };
+
+        socket.onerror = (err) => {
+            console.error("WebSocket Error:", err);
+            originalOutput.innerText = "Connection lost.";
+            stopRecording();
+        };
+
+        socket.onclose = () => {
+            // Clean up UI if server drops connection unexpectedly
+            if (isRecording) stopRecording();
+        };
+
         try {
-            microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
+            globalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
 
-            recorder = new RecordRTC(microphone, {
-                type: 'audio',
-                mimeType: 'audio/wav',
-                recorderType: RecordRTC.StereoAudioRecorder,
-                desiredSampRate: 16000,
-                numberOfAudioChannels: 1
-            });
+            const input = audioContext.createMediaStreamSource(globalStream);
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-            recorder.startRecording();
+            processor.onaudioprocess = (e) => {
+                if (!isRecording || socket.readyState !== WebSocket.OPEN) return;
 
-            // UI Update for Active Recording State
-            btnText.innerText = "Stop Recording";
+                const inputData = e.inputBuffer.getChannelData(0);
+                const pcmData = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+                }
+                socket.send(pcmData.buffer);
+            };
+
+            input.connect(processor);
+            processor.connect(audioContext.destination);
+
+            isRecording = true;
+            btnText.innerText = "Stop Streaming";
             recordBtn.className = "group relative w-full md:w-[60%] bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold py-5 px-6 rounded-2xl transition-all duration-300 shadow-xl shadow-red-500/30 transform hover:-translate-y-1 flex justify-center items-center gap-3 z-10 animate-pulse border border-red-500";
             micIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />`;
             statusEl.classList.remove('hidden');
             playBtn.classList.add('hidden');
 
         } catch (err) {
-            alert("Microphone access denied or not found. Please check your browser permissions.");
+            alert("Microphone access denied. Please check your browser permissions.");
         }
-    });
+    }
+
+    function stopRecording() {
+        if (!isRecording) return;
+        isRecording = false;
+
+        btnText.innerText = "Start Streaming";
+        recordBtn.className = "group relative w-full md:w-[60%] bg-slate-900 hover:bg-slate-800 text-white font-bold py-5 px-6 rounded-2xl transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-1 flex justify-center items-center gap-3 z-10 border border-slate-700";
+        micIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />`;
+        statusEl.classList.add('hidden');
+
+        if (processor) processor.disconnect();
+        if (audioContext) audioContext.close();
+        if (globalStream) globalStream.getTracks().forEach(track => track.stop());
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.close();
+        }
+
+        // Clean up the text for saving
+        const finalOriginal = originalOutput.innerText.replace(/"/g, '').trim();
+        const finalTranslated = translatedOutput.innerText.trim();
+
+        // 1. Speak the final result automatically
+        speakTranslation(finalTranslated);
+
+        // 2. NEW LOGIC: Save to the REST API, then reload the history table
+        if (finalOriginal && finalTranslated && finalTranslated !== "Translating..." && finalTranslated !== "-") {
+            fetch('/api/history/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sourceLang: document.getElementById('sourceLang').value,
+                    targetLang: document.getElementById('targetLang').value,
+                    originalText: finalOriginal,
+                    translatedText: finalTranslated
+                })
+            }).then(() => loadHistory()); // Reload strictly AFTER the save completes
+        } else {
+            loadHistory();
+        }
+    }
 </script>
 </body>
 </html>

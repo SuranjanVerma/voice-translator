@@ -12,18 +12,31 @@ import java.util.stream.Collectors;
 @RestController
 public class ModelCheckController {
 
-    @Value("${vosk.model.dir:/opt/vosk-models}")
+    // ALIGNED FIX: Matches the exact zero-config fallback path used in SpeechService
+    @Value("${vosk.model.dir:src/main/resources/vosk-model}")
     private String modelDir;
 
     @GetMapping("/api/debug/models")
     public List<String> listModels() {
         File dir = new File(modelDir);
+
         if (dir.exists() && dir.isDirectory()) {
-            return Arrays.stream(dir.listFiles())
+            File[] files = dir.listFiles();
+
+            if (files == null || files.length == 0) {
+                return List.of("Model directory is empty. Models will auto-download on first use.");
+            }
+
+            return Arrays.stream(files)
                     .filter(File::isDirectory)
-                    .map(f -> f.getName() + " (" + (new File(f, "am/final.mdl").exists() ? "valid" : "invalid") + ")")
+                    // CLOUD FIX: Just verifies the folder has contents, rather than checking for strict heavy-model structures
+                    .map(f -> {
+                        boolean hasContents = f.list() != null && f.list().length > 0;
+                        return f.getName() + (hasContents ? " (Ready/Installed)" : " (Empty - Will download on request)");
+                    })
                     .collect(Collectors.toList());
         }
-        return List.of("Model directory not found: " + modelDir);
+
+        return List.of("Model directory not found at " + modelDir + ". The system will create it and auto-download models on first use.");
     }
 }

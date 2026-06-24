@@ -26,6 +26,9 @@ public class TranslationService {
 
     private static final Logger log = LoggerFactory.getLogger(TranslationService.class);
 
+    // Standard browser User-Agent to prevent instant bot-bans from free APIs
+    private static final String BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36";
+
     private final CloseableHttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final List<String> fallbackApis;
@@ -38,8 +41,6 @@ public class TranslationService {
 
     @Value("${translation.mymemory.email:}")
     private String myMemoryEmail;
-
-    private static final String GOOGLE_FREE_URL = "https://translate.googleapis.com/translate_a/single";
 
     public TranslationService(CloseableHttpClient httpClient,
                               ObjectMapper objectMapper,
@@ -98,7 +99,8 @@ public class TranslationService {
 
     // --- Google Translate (free, unofficial endpoint) ---
     private String callGoogleTranslate(String text, String src, String tgt) throws Exception {
-        URIBuilder uriBuilder = new URIBuilder("https://translate.googleapis.com/translate_a/single?client=gtx&sl={sl}&tl={tl}&dt=t&q={q}");
+        // CLOUD FIX: Stripped the template string to allow URIBuilder to safely encode parameters
+        URIBuilder uriBuilder = new URIBuilder("https://translate.googleapis.com/translate_a/single");
         uriBuilder.addParameter("client", "gtx");
         uriBuilder.addParameter("sl", src);
         uriBuilder.addParameter("tl", tgt);
@@ -106,6 +108,9 @@ public class TranslationService {
         uriBuilder.addParameter("q", text);
 
         HttpGet get = new HttpGet(uriBuilder.build());
+        // CLOUD FIX: Stealth header to prevent IP bans
+        get.setHeader("User-Agent", BROWSER_USER_AGENT);
+
         try (CloseableHttpResponse response = httpClient.execute(get)) {
             byte[] bytes = readEntityBytes(response.getEntity());
             JsonNode root = objectMapper.readTree(bytes);
@@ -117,6 +122,7 @@ public class TranslationService {
     private String callLibreTranslate(String text, String src, String tgt) throws Exception {
         HttpPost post = new HttpPost(libreTranslateUrl);
         post.setHeader("Content-Type", "application/json");
+        post.setHeader("User-Agent", BROWSER_USER_AGENT);
 
         Map<String, String> body = new java.util.HashMap<>();
         body.put("q", text);
@@ -152,6 +158,8 @@ public class TranslationService {
         }
 
         HttpGet get = new HttpGet(uriBuilder.build());
+        get.setHeader("User-Agent", BROWSER_USER_AGENT);
+
         try (CloseableHttpResponse response = httpClient.execute(get)) {
             byte[] bytes = readEntityBytes(response.getEntity());
             JsonNode root = objectMapper.readTree(bytes);

@@ -11,15 +11,18 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.BinaryWebSocketHandler;
 
+import java.util.HashMap;
 import java.util.Map;
 
 public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(SpeechWebSocketHandler.class);
+
     private final SpeechService speechService;
     private final TranslationService translationService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Cleaned up constructor: Database repository is no longer needed here!
     public SpeechWebSocketHandler(SpeechService speechService, TranslationService translationService) {
         this.speechService = speechService;
         this.translationService = translationService;
@@ -27,17 +30,19 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        // Expect parameters: sourceLang and targetLang from the WebSocket URL query
         String query = session.getUri().getQuery();
         Map<String, String> params = parseQueryParams(query);
         String sourceLang = params.getOrDefault("sourceLang", "en-US");
         String targetLang = params.getOrDefault("targetLang", "hi-IN");
 
-        // Start a speech recognition session
         String speechSessionId = speechService.startSession(sourceLang);
         session.getAttributes().put("speechSessionId", speechSessionId);
         session.getAttributes().put("sourceLang", sourceLang);
         session.getAttributes().put("targetLang", targetLang);
+
+        // Tracking variables for API throttling
+        session.getAttributes().put("lastTranslatedOriginal", "");
+        session.getAttributes().put("lastTranslatedResult", "");
 
         logger.info("WebSocket opened: session={}, speechSessionId={}", session.getId(), speechSessionId);
         session.sendMessage(new TextMessage("{\"status\":\"ready\"}"));
@@ -58,27 +63,41 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
             byte[] audioChunk = message.getPayload().array();
             int numBytes = message.getPayloadLength();
 
-            // Process the audio chunk and get partial transcription
             String partialJson = speechService.processChunk(speechSessionId, audioChunk, numBytes);
             Map<String, Object> partialResult = objectMapper.readValue(partialJson, Map.class);
             String partialText = (String) partialResult.getOrDefault("text", "");
+            boolean isFinal = (boolean) partialResult.getOrDefault("final", false);
 
-            // Translate the partial text (even if incomplete) – for a real‑time feel
-            String translated = translationService.translate(partialText, sourceLang, targetLang);
+            if (partialText.trim().isEmpty()) {
+                return; // Skip processing if no text was recognized yet
+            }
 
-            // Send both original and translation back to client
+            String lastTranslatedOriginal = (String) session.getAttributes().get("lastTranslatedOriginal");
+            String translatedResult = (String) session.getAttributes().get("lastTranslatedResult");
+
+            int currentWords = partialText.trim().isEmpty() ? 0 : partialText.trim().split("\\s+").length;
+            int lastWords = lastTranslatedOriginal.trim().isEmpty() ? 0 : lastTranslatedOriginal.trim().split("\\s+").length;
+
+            // Instantly translate even single words
+            if (isFinal || (currentWords - lastWords >= 1)) {
+                translatedResult = translationService.translate(partialText, sourceLang, targetLang);
+                session.getAttributes().put("lastTranslatedOriginal", partialText);
+                session.getAttributes().put("lastTranslatedResult", translatedResult);
+            }
+
+            // Send response back to frontend
             String responseJson = objectMapper.writeValueAsString(Map.of(
                     "original", partialText,
-                    "translated", translated,
-                    "final", partialResult.getOrDefault("final", false)
+                    "translated", translatedResult,
+                    "final", isFinal
             ));
-            session.sendMessage(new TextMessage(responseJson));
+
+            if (session.isOpen()) {
+                session.sendMessage(new TextMessage(responseJson));
+            }
 
         } catch (Exception e) {
             logger.error("Error processing audio chunk for session {}: {}", session.getId(), e.getMessage());
-            try {
-                session.sendMessage(new TextMessage("{\"error\":\"Processing error\"}"));
-            } catch (Exception ignored) {}
         }
     }
 
@@ -87,26 +106,19 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
         String speechSessionId = (String) session.getAttributes().get("speechSessionId");
         if (speechSessionId != null) {
             try {
-                String finalText = speechService.stopSession(speechSessionId);
-                // Optionally send final result back before closing
-                String sourceLang = (String) session.getAttributes().get("sourceLang");
-                String targetLang = (String) session.getAttributes().get("targetLang");
-                String translated = translationService.translate(finalText, sourceLang, targetLang);
-                String finalJson = objectMapper.writeValueAsString(Map.of(
-                        "original", finalText,
-                        "translated", translated,
-                        "final", true
-                ));
-                session.sendMessage(new TextMessage(finalJson));
+                // Free up the RAM immediately
+                speechService.stopSession(speechSessionId);
             } catch (Exception e) {
                 logger.error("Error finalizing speech session: {}", e.getMessage());
             }
         }
-        logger.info("WebSocket closed: session={}", session.getId());
+
+        // Database logic removed! The REST Controller handles this securely now.
+        logger.info("WebSocket closed cleanly: session={}", session.getId());
     }
 
     private Map<String, String> parseQueryParams(String query) {
-        Map<String, String> map = new java.util.HashMap<>();
+        Map<String, String> map = new HashMap<>();
         if (query != null) {
             for (String param : query.split("&")) {
                 String[] pair = param.split("=", 2);

@@ -16,24 +16,21 @@
     <artifactId>language_translator</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Language Translator</name>
-    <description>Enterprise Any-to-Any Speech Translator with Real-time Fallback APIs</description>
+    <description>Gray United Language Translator with Real-time Fallback APIs</description>
 
     <properties>
-        <!-- Use Java 17 LTS for Render compatibility -->
         <java.version>17</java.version>
         <vosk.version>0.3.45</vosk.version>
         <jjwt.version>0.12.5</jjwt.version>
     </properties>
 
     <dependencies>
-        <!-- Vosk speech recognition -->
         <dependency>
             <groupId>com.alphacephei</groupId>
             <artifactId>vosk</artifactId>
             <version>${vosk.version}</version>
         </dependency>
 
-        <!-- Spring Boot starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -46,12 +43,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
-        <!-- WebSocket for real-time streaming translation -->
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
-        <!-- Caching (local caffeine cache) for repeated translations -->
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-cache</artifactId>
@@ -61,14 +58,18 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
-        <!-- Database -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- JWT authentication -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
@@ -87,20 +88,17 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Robust HTTP client for calling external translation APIs -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
             <artifactId>httpclient5</artifactId>
             <version>5.2.1</version>
         </dependency>
 
-        <!-- Jackson already included by web starter, but explicit to avoid version conflicts -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
-        <!-- Devtools (will be disabled automatically in production on Render) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>
@@ -108,7 +106,6 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
