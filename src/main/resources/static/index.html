@@ -26,6 +26,14 @@
         .animate-float { animation: float 15s ease-in-out infinite; }
         .animation-delay-2000 { animation-delay: 2s; }
         .animation-delay-4000 { animation-delay: 4s; }
+
+        #historyTableBody tr { animation: fadeIn 0.25s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .retry-btn { transition: all 0.2s; }
+        .retry-btn:hover { transform: scale(1.03); }
     </style>
 </head>
 <body class="bg-slate-50 flex flex-col items-center justify-center min-h-screen py-12 px-4 antialiased text-slate-800 relative overflow-x-hidden">
@@ -35,12 +43,11 @@
 <div class="absolute bottom-[-5%] left-[20%] w-[40vw] h-[40vw] bg-indigo-300/30 rounded-full mix-blend-multiply filter blur-[80px] animate-float animation-delay-4000 pointer-events-none"></div>
 
 <div class="glass-panel p-8 md:p-12 rounded-[2.5rem] max-w-4xl w-full relative z-10">
-
-    <a href="/logout" class="absolute top-6 right-6 md:top-8 md:right-8 text-xs text-slate-600 font-bold px-4 py-2.5 bg-white/80 rounded-xl hover:bg-white hover:text-red-600 transition-all duration-200 ease-in-out shadow-sm border border-slate-200 z-20 uppercase tracking-wide">Sign Out</a>
+    <a href="/logout" class="absolute top-6 right-6 md:top-8 md:right-8 text-xs text-slate-600 font-bold px-4 py-2.5 bg-white/80 rounded-xl hover:bg-white hover:text-red-600 transition-all shadow-sm border border-slate-200 z-20 uppercase tracking-wide">Sign Out</a>
 
     <div class="text-center mb-12 pt-6 relative z-10">
         <h1 class="text-4xl md:text-5xl lg:text-6xl font-black tracking-tighter mb-3 leading-tight drop-shadow-sm">
-            <span class="text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-orange-500">Gray United</span> <br class="md:hidden" />
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-orange-500">Gray United</span><br/>
             <span class="text-slate-900">Voice Translator</span>
         </h1>
         <p class="text-slate-500 font-semibold uppercase tracking-[0.2em] text-xs md:text-sm">Real-Time Streaming Engine</p>
@@ -66,23 +73,13 @@
             <div class="relative group">
                 <select id="targetLang" class="w-full appearance-none border border-white/80 rounded-2xl p-4 bg-white/90 text-slate-800 font-bold shadow-sm focus:ring-4 focus:ring-red-500/10 focus:border-red-400 transition-all outline-none cursor-pointer">
                     <optgroup label="Indian Languages">
-                        <option value="hi">Hindi</option>
-                        <option value="or">Odia</option>
-                        <option value="bn">Bengali</option>
-                        <option value="pa">Punjabi</option>
-                        <option value="gu">Gujarati</option>
-                        <option value="mr">Marathi</option>
-                        <option value="ta">Tamil</option>
-                        <option value="kn">Kannada</option>
-                        <option value="ml">Malayalam</option>
+                        <option value="hi">Hindi</option><option value="or">Odia</option><option value="bn">Bengali</option>
+                        <option value="pa">Punjabi</option><option value="gu">Gujarati</option><option value="mr">Marathi</option>
+                        <option value="ta">Tamil</option><option value="kn">Kannada</option><option value="ml">Malayalam</option>
                     </optgroup>
                     <optgroup label="International Languages">
-                        <option value="en">English</option>
-                        <option value="fr">French</option>
-                        <option value="ru">Russian</option>
-                        <option value="de">German</option>
-                        <option value="es">Spanish</option>
-                        <option value="zh">Chinese</option>
+                        <option value="en">English</option><option value="fr">French</option><option value="ru">Russian</option>
+                        <option value="de">German</option><option value="es">Spanish</option><option value="zh">Chinese</option>
                     </optgroup>
                 </select>
                 <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 group-hover:text-red-500 transition-colors">
@@ -93,7 +90,7 @@
     </div>
 
     <div class="flex justify-center mb-6">
-        <button id="recordBtn" class="group relative w-full md:w-[60%] bg-slate-900 hover:bg-slate-800 text-white font-bold py-5 px-6 rounded-2xl transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-1 flex justify-center items-center gap-3 z-10 border border-slate-700">
+        <button id="recordBtn" class="group relative w-full md:w-[60%] bg-slate-900 hover:bg-slate-800 text-white font-bold py-5 px-6 rounded-2xl transition-all shadow-xl hover:-translate-y-1 flex justify-center items-center gap-3 z-10 border border-slate-700">
             <svg id="micIcon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
@@ -103,10 +100,10 @@
 
     <div id="status" class="text-center mt-2 hidden z-10 relative">
         <div class="inline-flex items-center gap-2 bg-red-50 text-red-600 px-5 py-2 rounded-full text-sm font-bold border border-red-200 shadow-sm">
-            <span class="relative flex h-3 w-3">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-            </span>
+                <span class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
             Live connection active...
         </div>
     </div>
@@ -114,28 +111,26 @@
     <div class="mt-12 pt-10 border-t border-slate-200 relative z-10">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="bg-indigo-50/80 rounded-3xl p-8 border border-white shadow-sm relative group">
-                <h3 class="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-4 text-center md:text-left">Live Transcription</h3>
-                <p id="originalText" class="text-slate-800 text-lg leading-relaxed min-h-[3rem] font-bold text-center md:text-left">-</p>
+                <h3 class="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-4">Live Transcription</h3>
+                <p id="originalText" class="text-slate-800 text-lg font-bold min-h-[3rem]">-</p>
             </div>
-
             <div class="bg-indigo-50/80 rounded-3xl p-8 border border-white shadow-sm relative group">
-                <div class="flex justify-center md:justify-between items-start mb-4">
+                <div class="flex justify-between items-start mb-4">
                     <h3 class="text-[11px] font-black text-slate-900 uppercase tracking-widest">Live Translation</h3>
-
-                    <button id="playBtn" class="hidden absolute top-6 right-6 md:relative md:top-auto md:right-auto text-indigo-500 hover:text-indigo-700 transition-colors p-2 -mt-2 -mr-2 rounded-full hover:bg-white focus:outline-none ring-1 ring-indigo-200 shadow-sm" title="Read Aloud">
+                    <button id="playBtn" class="hidden text-indigo-500 hover:text-indigo-700 p-2 rounded-full hover:bg-white focus:outline-none ring-1 ring-indigo-200 shadow-sm" title="Read Aloud">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                         </svg>
                     </button>
                 </div>
-                <p id="translatedText" class="text-indigo-950 text-lg font-bold leading-relaxed min-h-[3rem] text-center md:text-left">-</p>
+                <p id="translatedText" class="text-indigo-950 text-lg font-bold min-h-[3rem]">-</p>
             </div>
         </div>
     </div>
 </div>
 
 <div class="glass-panel max-w-4xl w-full mt-8 p-10 rounded-[2.5rem] relative z-10">
-    <div class="flex items-center justify-between mb-8">
+    <div class="flex items-center justify-between mb-8 flex-wrap gap-4">
         <h2 class="text-2xl font-black text-slate-900 flex items-center gap-3">
             <div class="p-2.5 bg-indigo-100 rounded-xl">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -144,7 +139,15 @@
             </div>
             Translation History
         </h2>
-        <button id="clearHistoryBtn" class="text-xs text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2.5 rounded-xl font-bold border border-red-200">Clear All</button>
+        <div class="flex items-center gap-3">
+            <button id="refreshHistoryBtn" class="text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2.5 rounded-xl font-bold border border-indigo-200 transition-all flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+            </button>
+            <button id="clearHistoryBtn" class="text-xs text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2.5 rounded-xl font-bold border border-red-200">Clear All</button>
+        </div>
     </div>
 
     <div class="overflow-hidden rounded-3xl border border-white bg-white/90 shadow-sm">
@@ -152,15 +155,13 @@
             <table class="w-full text-sm text-left min-w-[600px]">
                 <thead class="text-xs text-slate-900 font-black uppercase tracking-widest bg-slate-100 border-b border-slate-200">
                 <tr>
-                    <th scope="col" class="px-8 py-6 w-5/12">Source Text</th>
-                    <th scope="col" class="px-8 py-6 w-5/12">Translated Text</th>
-                    <th scope="col" class="px-8 py-6 w-2/12 text-center">Route</th>
+                    <th class="px-8 py-6 w-5/12">Source Text</th>
+                    <th class="px-8 py-6 w-5/12">Translated Text</th>
+                    <th class="px-8 py-6 w-2/12 text-center">Route</th>
                 </tr>
                 </thead>
                 <tbody id="historyTableBody" class="divide-y divide-slate-100">
-                <tr>
-                    <td colspan="3" class="px-8 py-12 text-center text-slate-400 font-semibold">Fetching secure records...</td>
-                </tr>
+                <tr><td colspan="3" class="px-8 py-12 text-center text-slate-400 font-semibold">Loading history…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -168,6 +169,147 @@
 </div>
 
 <script>
+    // ------------------------------------------------------------------
+    // 1. Helper: read CSRF token from cookie
+    // ------------------------------------------------------------------
+    function getCsrfToken() {
+        const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN\s*=\s*([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    // ------------------------------------------------------------------
+    // 2. History loading with loading/error/empty states + CSRF
+    // ------------------------------------------------------------------
+    async function loadHistory() {
+        const tableBody = document.getElementById('historyTableBody');
+        const csrfToken = getCsrfToken();
+
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="3" class="px-8 py-12 text-center">
+                    <div class="flex flex-col items-center gap-3">
+                        <svg class="animate-spin h-6 w-6 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-slate-500 font-medium">Loading history…</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+
+        try {
+            const response = await fetch('/api/history', {
+                method: 'GET',
+                headers: { 'X-XSRF-TOKEN': csrfToken },
+                credentials: 'include'
+            });
+
+            // Redirect if session expired
+            if (response.status === 401 || response.status === 403) {
+                window.location.href = '/login.html';
+                return;
+            }
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            tableBody.innerHTML = '';
+
+            if (data.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="px-8 py-12 text-center text-slate-500 font-medium">
+                            <div class="flex flex-col items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                </svg>
+                                <span>No translation records found.</span>
+                                <span class="text-xs text-slate-400">Start streaming to see results here.</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            data.forEach(record => {
+                const row = document.createElement('tr');
+                row.className = "hover:bg-indigo-50/40 transition-colors duration-150";
+                row.innerHTML = `
+                    <td class="px-8 py-6 font-semibold text-slate-700 leading-relaxed border-r border-slate-100">"${record.originalText}"</td>
+                    <td class="px-8 py-6 text-indigo-700 font-black leading-relaxed border-r border-slate-100">${record.translatedText}</td>
+                    <td class="px-8 py-6 text-center">
+                        <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 uppercase tracking-widest shadow-sm border border-slate-200/50">
+                            ${record.sourceLang} → ${record.targetLang}
+                        </span>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        } catch (error) {
+            console.error("History fetch error:", error);
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="px-8 py-12 text-center">
+                        <div class="flex flex-col items-center gap-4">
+                            <div class="text-red-500">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span class="font-bold text-red-600">Connection error</span>
+                            </div>
+                            <p class="text-slate-500 text-sm">Could not retrieve history. Check your network or try again.</p>
+                            <button onclick="loadHistory()" class="retry-btn inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-all">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Retry
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 3. DOM ready – load history & attach event listeners
+    // ------------------------------------------------------------------
+    document.addEventListener('DOMContentLoaded', () => {
+        loadHistory();
+
+        document.getElementById('refreshHistoryBtn').addEventListener('click', loadHistory);
+
+        document.getElementById('clearHistoryBtn').addEventListener('click', async () => {
+            if (!confirm("Delete all history?")) return;
+            try {
+                const csrfToken = getCsrfToken();
+                const res = await fetch('/api/history', {
+                    method: 'DELETE',
+                    headers: { 'X-XSRF-TOKEN': csrfToken },
+                    credentials: 'include'
+                });
+
+                if (res.status === 401 || res.status === 403) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+
+                if (res.ok) {
+                    loadHistory();
+                } else {
+                    alert("Failed to clear history.");
+                }
+            } catch (e) {
+                alert("Network error while clearing history.");
+            }
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // 4. TTS, WebSocket Streaming, Recording Logic (FULL)
+    // ------------------------------------------------------------------
     let socket = null;
     let audioContext = null;
     let processor = null;
@@ -182,106 +324,176 @@
     const originalOutput = document.getElementById('originalText');
     const translatedOutput = document.getElementById('translatedText');
 
-    async function loadHistory() {
-        const tableBody = document.getElementById('historyTableBody');
-        try {
-            const response = await fetch('/api/history');
-            if (!response.ok) throw new Error("Failed to load");
-            const historyData = await response.json();
-            tableBody.innerHTML = historyData.length === 0
-                ? '<tr><td colspan="3" class="px-8 py-12 text-center text-slate-500 font-semibold">No records.</td></tr>'
-                : historyData.map(record => `
-                    <tr class="hover:bg-indigo-50/40 transition-colors duration-150">
-                        <td class="px-8 py-6 font-semibold text-slate-700 leading-relaxed border-r border-slate-100">"${record.originalText}"</td>
-                        <td class="px-8 py-6 text-indigo-700 font-black leading-relaxed border-r border-slate-100">${record.translatedText}</td>
-                        <td class="px-8 py-6 text-center">
-                            <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 uppercase tracking-widest border border-slate-200/50">${record.sourceLang} → ${record.targetLang}</span>
-                        </td>
-                    </tr>`).join('');
-        } catch (error) {
-            tableBody.innerHTML = `<tr><td colspan="3" class="px-8 py-12 text-center text-red-500 font-bold">Connection error. Could not retrieve history.</td></tr>`;
-        }
-    }
+    // --- TTS ---
+    function speakTranslation(text) {
+        if (!text || text.trim() === "" || text === "-" || text === "Translating...") return;
 
-    window.addEventListener('DOMContentLoaded', loadHistory);
+        const selectedLang = document.getElementById('targetLang').value;
+        const voiceMap = {
+            'hi': 'hi-IN', 'es': 'es-ES', 'fr': 'fr-FR', 'or': 'or-IN',
+            'bn': 'bn-IN', 'zh': 'zh-CN', 'de': 'de-DE', 'ru': 'ru-RU',
+            'en': 'en-US', 'mr': 'mr-IN', 'ta': 'ta-IN'
+        };
+        const targetLangCode = voiceMap[selectedLang] || 'en-US';
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = targetLangCode;
+        utterance.rate = 0.9;
 
-    // MODIFIED: Clear History Logic
-    document.getElementById('clearHistoryBtn').addEventListener('click', async () => {
-        if(confirm("Delete all history?")) {
-            await fetch('/api/history', { method: 'DELETE' });
-            loadHistory();
-        }
-    });
+        const voices = window.speechSynthesis.getVoices();
+        const nativeVoice = voices.find(voice => voice.lang.toLowerCase().startsWith(selectedLang.toLowerCase()));
+        if (nativeVoice) utterance.voice = nativeVoice;
 
-    function speakTranslation(textToRead) {
-        if (!textToRead || textToRead === "Translating..." || textToRead === "Translation will appear here...") return;
-        const utterance = new SpeechSynthesisUtterance(textToRead);
-        utterance.lang = document.getElementById('targetLang').value;
+        window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
     }
 
-    playBtn.addEventListener('click', () => speakTranslation(translatedOutput.innerText));
+    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+
+    // --- Manual Play ---
+    playBtn.addEventListener('click', () => {
+        speakTranslation(translatedOutput.innerText);
+    });
+
+    // --- WebSocket Streaming ---
+    recordBtn.addEventListener('click', async () => {
+        if (isRecording) {
+            stopRecording();
+        } else {
+            await startRecording();
+        }
+    });
 
     async function startRecording() {
+        const sourceLang = document.getElementById("sourceLang").value;
+        const targetLang = document.getElementById("targetLang").value;
+
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/speech?sourceLang=${document.getElementById("sourceLang").value}&targetLang=${document.getElementById("targetLang").value}`;
+        const wsUrl = `${protocol}//${window.location.host}/ws/speech?sourceLang=${sourceLang}&targetLang=${targetLang}`;
+
         socket = new WebSocket(wsUrl);
-        socket.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            if(data.original) {
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.status === "ready") {
+                originalOutput.innerText = "Listening...";
+                translatedOutput.innerText = "Translation will appear here...";
+            } else if (data.original) {
                 originalOutput.innerText = `"${data.original}"`;
-                translatedOutput.innerText = data.translated || "Translating...";
-                if(data.translated) playBtn.classList.remove('hidden');
+
+                if (data.translated && data.translated.trim() !== "") {
+                    translatedOutput.innerText = data.translated;
+                } else if (data.original.trim().length > 0) {
+                    translatedOutput.innerText = "Translating...";
+                }
+
+                if (data.final) {
+                    playBtn.classList.remove('hidden');
+                }
             }
         };
 
-        globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioContext = new AudioContext({ sampleRate: 16000 });
-        const input = audioContext.createMediaStreamSource(globalStream);
-        processor = audioContext.createScriptProcessor(4096, 1, 1);
-        processor.onaudioprocess = (e) => {
-            if (socket.readyState === WebSocket.OPEN) {
-                const pcm = new Int16Array(e.inputBuffer.getChannelData(0).map(s => Math.max(-1, Math.min(1, s)) * 32767));
-                socket.send(pcm.buffer);
-            }
+        socket.onerror = (err) => {
+            console.error("WebSocket Error:", err);
+            originalOutput.innerText = "Connection lost.";
+            stopRecording();
         };
-        input.connect(processor);
-        processor.connect(audioContext.destination);
-        isRecording = true;
-        btnText.innerText = "Stop Streaming";
-        statusEl.classList.remove('hidden');
+
+        socket.onclose = () => stopRecording();
+
+        try {
+            globalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+
+            const input = audioContext.createMediaStreamSource(globalStream);
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+            processor.onaudioprocess = (e) => {
+                if (!isRecording || socket.readyState !== WebSocket.OPEN) return;
+
+                const inputData = e.inputBuffer.getChannelData(0);
+                const pcmData = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+                }
+                socket.send(pcmData.buffer);
+            };
+
+            input.connect(processor);
+            processor.connect(audioContext.destination);
+
+            isRecording = true;
+            btnText.innerText = "Stop Streaming";
+            recordBtn.className = "group relative w-full md:w-[60%] bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold py-5 px-6 rounded-2xl transition-all duration-300 shadow-xl shadow-red-500/30 transform hover:-translate-y-1 flex justify-center items-center gap-3 z-10 animate-pulse border border-red-500";
+            micIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />`;
+            statusEl.classList.remove('hidden');
+            playBtn.classList.add('hidden');
+
+        } catch (err) {
+            alert("Microphone access denied. Please check your browser permissions.");
+        }
     }
 
-    // MODIFIED: stopRecording with placeholder blocking
+    // --- stopRecording with save API logic ---
     function stopRecording() {
+        if (!isRecording) return;
         isRecording = false;
-        if(socket) socket.close();
-        if(globalStream) globalStream.getTracks().forEach(t => t.stop());
+
+        btnText.innerText = "Start Streaming";
+        recordBtn.className = "group relative w-full md:w-[60%] bg-slate-900 hover:bg-slate-800 text-white font-bold py-5 px-6 rounded-2xl transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-1 flex justify-center items-center gap-3 z-10 border border-slate-700";
+        micIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />`;
+        statusEl.classList.add('hidden');
+
+        if (processor) processor.disconnect();
+        if (audioContext) audioContext.close();
+        if (globalStream) globalStream.getTracks().forEach(track => track.stop());
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.close();
+        }
 
         const finalOriginal = originalOutput.innerText.replace(/"/g, '').trim();
         const finalTranslated = translatedOutput.innerText.trim();
-        const isPlaceholder = finalOriginal === "Listening..." || finalTranslated === "Translating..." || finalTranslated === "Translation will appear here..." || finalTranslated === "-";
 
         speakTranslation(finalTranslated);
 
+        const isPlaceholder = finalOriginal === "Listening..." ||
+                              finalTranslated === "Translating..." ||
+                              finalTranslated === "Translation will appear here..." ||
+                              finalTranslated === "-";
+
         if (finalOriginal && finalTranslated && !isPlaceholder) {
+            const csrfToken = getCsrfToken();
+
             fetch('/api/history/save', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-XSRF-TOKEN': csrfToken
+                },
+                credentials: 'include',
                 body: JSON.stringify({
                     sourceLang: document.getElementById('sourceLang').value,
                     targetLang: document.getElementById('targetLang').value,
-                    originalText: finalOriginal.replace(/"/g, ''),
+                    originalText: finalOriginal,
                     translatedText: finalTranslated
                 })
-            }).then(loadHistory);
+            })
+            .then(response => {
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login.html';
+                } else if (!response.ok) {
+                    console.error("Save failed with status:", response.status);
+                }
+                return loadHistory();
+            })
+            .catch(error => {
+                console.error("Network error while saving:", error);
+                loadHistory();
+            });
+        } else {
+            loadHistory();
         }
-
-        btnText.innerText = "Start Streaming";
-        statusEl.classList.add('hidden');
     }
-
-    recordBtn.addEventListener('click', () => isRecording ? stopRecording() : startRecording());
 </script>
 </body>
 </html>
