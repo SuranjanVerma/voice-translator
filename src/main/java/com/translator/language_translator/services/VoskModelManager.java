@@ -55,13 +55,26 @@ public class VoskModelManager {
     }
 
     public void clearAllModels() {
-        System.out.println("Clearing old speech models from memory to free up RAM...");
+        System.out.println("Aggressively clearing old speech models from memory...");
+
         loadedModels.forEach((key, model) -> {
             if (model != null) {
-                model.close();
+                try {
+                    model.close(); // Frees the C++ Native Memory
+                } catch (Exception e) {
+                    System.err.println("Error closing model: " + e.getMessage());
+                }
             }
         });
         loadedModels.clear();
+
+        // Force Java to clean up the proxy objects immediately
+        System.gc();
+
+        // Give the OS a tiny fraction of a second to reclaim the RAM before loading the next one
+        try {
+            Thread.sleep(200);
+        } catch (InterruptedException ignored) {}
     }
 
     @PreDestroy
