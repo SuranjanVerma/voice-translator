@@ -12,55 +12,49 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+// 1. Import BOTH LibVosk and the LogLevel enum
+import org.vosk.LibVosk;
+import org.vosk.LogLevel;
+
 import java.util.concurrent.Executor;
 
 @SpringBootApplication
-@EnableCaching            // Enables Spring Cache (Caffeine)
-@EnableAsync              // Allows @Async methods for non‑blocking translation calls
+@EnableCaching
+@EnableAsync
 public class LanguageTranslatorApplication {
 
     public static void main(String[] args) {
+        // 2. Use the Java Enum to restrict logging to Warnings/Errors only
+        LibVosk.setLogLevel(LogLevel.WARNINGS);
+
         SpringApplication.run(LanguageTranslatorApplication.class, args);
     }
 
-    /**
-     * Custom ObjectMapper – used by SpeechService.
-     * Spring Boot also provides one; if you don't need special configuration,
-     * you can delete this bean and let auto‑configuration do its work.
-     */
     @Bean
     public ObjectMapper objectMapper() {
         return new ObjectMapper();
     }
 
-    /**
-     * Optimized HTTP client for external translation APIs.
-     * Supports connection pooling, per‑request timeouts, and retries.
-     */
     @Bean
     public CloseableHttpClient httpClient() {
         return HttpClientBuilder.create()
                 .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
-                        .setMaxConnTotal(50)               // total connections
-                        .setMaxConnPerRoute(20)             // per route (each translation API)
+                        .setMaxConnTotal(10)
+                        .setMaxConnPerRoute(5)
                         .build())
                 .setDefaultRequestConfig(org.apache.hc.client5.http.config.RequestConfig.custom()
                         .setConnectTimeout(Timeout.ofSeconds(3))
-                        .setResponseTimeout(Timeout.ofSeconds(5))   // 5-second response timeout (prevents late translation)
+                        .setResponseTimeout(Timeout.ofSeconds(5))
                         .build())
                 .build();
     }
 
-    /**
-     * Thread pool executor for @Async tasks (e.g., calling external APIs).
-     * Prevents WebSocket threads from being blocked.
-     */
     @Bean(name = "taskExecutor")
     public Executor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(5);
-        executor.setMaxPoolSize(20);
-        executor.setQueueCapacity(100);
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("translator-async-");
         executor.initialize();
         return executor;

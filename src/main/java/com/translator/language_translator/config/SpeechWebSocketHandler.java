@@ -11,6 +11,7 @@ import org.vosk.Model;
 import org.vosk.Recognizer;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
@@ -18,12 +19,10 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
     private final VoskModelManager modelManager;
     private final TranslationService translationService;
 
-    // Track active memory and selected languages per user session
     private final ConcurrentHashMap<String, Recognizer> activeRecognizers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> sessionTargetLangs = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> sessionSourceLangs = new ConcurrentHashMap<>();
 
-    // Inject BOTH services now
     public SpeechWebSocketHandler(VoskModelManager modelManager, TranslationService translationService) {
         this.modelManager = modelManager;
         this.translationService = translationService;
@@ -32,10 +31,9 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String query = session.getUri() != null ? session.getUri().getQuery() : "";
-        String sourceLang = "en-IN"; // Default
-        String targetLang = "hi";    // Default
+        String sourceLang = "en-IN";
+        String targetLang = "hi";
 
-        // Extract the exact languages the user picked on the frontend
         if (query != null) {
             String[] params = query.split("&");
             for (String param : params) {
@@ -44,11 +42,9 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
             }
         }
 
-        // Save the languages for this specific session
         sessionSourceLangs.put(session.getId(), sourceLang);
         sessionTargetLangs.put(session.getId(), targetLang);
 
-        // Fetch the correct Vosk model dynamically
         Model sharedModel = modelManager.getModel(sourceLang);
 
         if (sharedModel == null) {
@@ -69,27 +65,27 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
         if (recognizer == null) return;
 
         try {
-            byte[] audioData = message.getPayload().array();
+            // FIX: Safely extract only the actual bytes sent in this frame
+            ByteBuffer buffer = message.getPayload();
+            int bytesCount = buffer.remaining();
+            byte[] audioData = new byte[bytesCount];
+            buffer.get(audioData);
 
-            if (recognizer.acceptWaveForm(audioData, audioData.length)) {
-                // The sentence is finished!
+            // Pass the precise length of the valid audio array
+            if (recognizer.acceptWaveForm(audioData, bytesCount)) {
                 String originalText = extractText(recognizer.getResult());
 
-                // Only translate if they actually said something
                 if (!originalText.trim().isEmpty()) {
                     String sourceLang = sessionSourceLangs.get(session.getId());
                     String targetLang = sessionTargetLangs.get(session.getId());
 
-                    // CALL YOUR GOOGLE TRANSLATE API
                     String translatedText = translationService.translate(originalText, sourceLang, targetLang);
 
-                    // Send BOTH original and translated text back to the frontend
                     session.sendMessage(new TextMessage(
                             "{\"original\": \"" + originalText + "\", \"translated\": \"" + translatedText + "\", \"final\": true}"
                     ));
                 }
             } else {
-                // Partial sentence (live typing effect). No translation yet to save API calls.
                 String partialResult = extractText(recognizer.getPartialResult());
                 session.sendMessage(new TextMessage("{\"original\": \"" + partialResult + "\"}"));
             }
@@ -100,16 +96,21 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        // Clean up all memory tied to this user
         Recognizer recognizerToClose = activeRecognizers.remove(session.getId());
         if (recognizerToClose != null) {
-            recognizerToClose.close();
+            try {
+                recognizerToClose.close(); // Frees underlying C++ structure
+            } catch (Exception e) {
+                System.err.println("Error explicitly closing recognizer: " + e.getMessage());
+            }
         }
         sessionSourceLangs.remove(session.getId());
         sessionTargetLangs.remove(session.getId());
+
+        // Explicitly hint to JVM to clear dead references immediately after session drop
+        System.gc();
     }
 
-    // Helper method to grab just the raw text and strip the JSON quotes
     private String extractText(String voskJson) {
         int textIndex = voskJson.indexOf("\"text\" : \"");
         int partialIndex = voskJson.indexOf("\"partial\" : \"");
