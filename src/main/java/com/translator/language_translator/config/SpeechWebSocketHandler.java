@@ -1,132 +1,126 @@
 package com.translator.language_translator.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.translator.language_translator.services.SpeechService;
 import com.translator.language_translator.services.TranslationService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.translator.language_translator.services.VoskModelManager;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.BinaryWebSocketHandler;
+import org.vosk.Model;
+import org.vosk.Recognizer;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.io.IOException;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger(SpeechWebSocketHandler.class);
-
-    private final SpeechService speechService;
+    private final VoskModelManager modelManager;
     private final TranslationService translationService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // Cleaned up constructor: Database repository is no longer needed here!
-    public SpeechWebSocketHandler(SpeechService speechService, TranslationService translationService) {
-        this.speechService = speechService;
+    // Track active memory and selected languages per user session
+    private final ConcurrentHashMap<String, Recognizer> activeRecognizers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> sessionTargetLangs = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> sessionSourceLangs = new ConcurrentHashMap<>();
+
+    // Inject BOTH services now
+    public SpeechWebSocketHandler(VoskModelManager modelManager, TranslationService translationService) {
+        this.modelManager = modelManager;
         this.translationService = translationService;
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        String query = session.getUri().getQuery();
-        Map<String, String> params = parseQueryParams(query);
-        String sourceLang = params.getOrDefault("sourceLang", "en-US");
-        String targetLang = params.getOrDefault("targetLang", "hi-IN");
+        String query = session.getUri() != null ? session.getUri().getQuery() : "";
+        String sourceLang = "en-IN"; // Default
+        String targetLang = "hi";    // Default
 
-        String speechSessionId = speechService.startSession(sourceLang);
-        session.getAttributes().put("speechSessionId", speechSessionId);
-        session.getAttributes().put("sourceLang", sourceLang);
-        session.getAttributes().put("targetLang", targetLang);
+        // Extract the exact languages the user picked on the frontend
+        if (query != null) {
+            String[] params = query.split("&");
+            for (String param : params) {
+                if (param.startsWith("sourceLang=")) sourceLang = param.substring(11);
+                if (param.startsWith("targetLang=")) targetLang = param.substring(11);
+            }
+        }
 
-        // Tracking variables for API throttling
-        session.getAttributes().put("lastTranslatedOriginal", "");
-        session.getAttributes().put("lastTranslatedResult", "");
+        // Save the languages for this specific session
+        sessionSourceLangs.put(session.getId(), sourceLang);
+        sessionTargetLangs.put(session.getId(), targetLang);
 
-        logger.info("WebSocket opened: session={}, speechSessionId={}", session.getId(), speechSessionId);
-        session.sendMessage(new TextMessage("{\"status\":\"ready\"}"));
+        // Fetch the correct Vosk model dynamically
+        Model sharedModel = modelManager.getModel(sourceLang);
+
+        if (sharedModel == null) {
+            session.sendMessage(new TextMessage("{\"error\": \"Speech model is currently unavailable.\"}"));
+            session.close();
+            return;
+        }
+
+        Recognizer sessionRecognizer = new Recognizer(sharedModel, 16000.0f);
+        activeRecognizers.put(session.getId(), sessionRecognizer);
+
+        session.sendMessage(new TextMessage("{\"status\": \"ready\"}"));
     }
 
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) {
+        Recognizer recognizer = activeRecognizers.get(session.getId());
+        if (recognizer == null) return;
+
         try {
-            String speechSessionId = (String) session.getAttributes().get("speechSessionId");
-            String sourceLang = (String) session.getAttributes().get("sourceLang");
-            String targetLang = (String) session.getAttributes().get("targetLang");
+            byte[] audioData = message.getPayload().array();
 
-            if (speechSessionId == null) {
-                session.sendMessage(new TextMessage("{\"error\":\"No active speech session\"}"));
-                return;
+            if (recognizer.acceptWaveForm(audioData, audioData.length)) {
+                // The sentence is finished!
+                String originalText = extractText(recognizer.getResult());
+
+                // Only translate if they actually said something
+                if (!originalText.trim().isEmpty()) {
+                    String sourceLang = sessionSourceLangs.get(session.getId());
+                    String targetLang = sessionTargetLangs.get(session.getId());
+
+                    // CALL YOUR GOOGLE TRANSLATE API
+                    String translatedText = translationService.translate(originalText, sourceLang, targetLang);
+
+                    // Send BOTH original and translated text back to the frontend
+                    session.sendMessage(new TextMessage(
+                            "{\"original\": \"" + originalText + "\", \"translated\": \"" + translatedText + "\", \"final\": true}"
+                    ));
+                }
+            } else {
+                // Partial sentence (live typing effect). No translation yet to save API calls.
+                String partialResult = extractText(recognizer.getPartialResult());
+                session.sendMessage(new TextMessage("{\"original\": \"" + partialResult + "\"}"));
             }
-
-            byte[] audioChunk = message.getPayload().array();
-            int numBytes = message.getPayloadLength();
-
-            String partialJson = speechService.processChunk(speechSessionId, audioChunk, numBytes);
-            Map<String, Object> partialResult = objectMapper.readValue(partialJson, Map.class);
-            String partialText = (String) partialResult.getOrDefault("text", "");
-            boolean isFinal = (boolean) partialResult.getOrDefault("final", false);
-
-            if (partialText.trim().isEmpty()) {
-                return; // Skip processing if no text was recognized yet
-            }
-
-            String lastTranslatedOriginal = (String) session.getAttributes().get("lastTranslatedOriginal");
-            String translatedResult = (String) session.getAttributes().get("lastTranslatedResult");
-
-            int currentWords = partialText.trim().isEmpty() ? 0 : partialText.trim().split("\\s+").length;
-            int lastWords = lastTranslatedOriginal.trim().isEmpty() ? 0 : lastTranslatedOriginal.trim().split("\\s+").length;
-
-            // Instantly translate even single words
-            if (isFinal || (currentWords - lastWords >= 1)) {
-                translatedResult = translationService.translate(partialText, sourceLang, targetLang);
-                session.getAttributes().put("lastTranslatedOriginal", partialText);
-                session.getAttributes().put("lastTranslatedResult", translatedResult);
-            }
-
-            // Send response back to frontend
-            String responseJson = objectMapper.writeValueAsString(Map.of(
-                    "original", partialText,
-                    "translated", translatedResult,
-                    "final", isFinal
-            ));
-
-            if (session.isOpen()) {
-                session.sendMessage(new TextMessage(responseJson));
-            }
-
-        } catch (Exception e) {
-            logger.error("Error processing audio chunk for session {}: {}", session.getId(), e.getMessage());
+        } catch (IOException e) {
+            // Ignore normal disconnects
         }
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        String speechSessionId = (String) session.getAttributes().get("speechSessionId");
-        if (speechSessionId != null) {
-            try {
-                // Free up the RAM immediately
-                speechService.stopSession(speechSessionId);
-            } catch (Exception e) {
-                logger.error("Error finalizing speech session: {}", e.getMessage());
-            }
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        // Clean up all memory tied to this user
+        Recognizer recognizerToClose = activeRecognizers.remove(session.getId());
+        if (recognizerToClose != null) {
+            recognizerToClose.close();
         }
-
-        // Database logic removed! The REST Controller handles this securely now.
-        logger.info("WebSocket closed cleanly: session={}", session.getId());
+        sessionSourceLangs.remove(session.getId());
+        sessionTargetLangs.remove(session.getId());
     }
 
-    private Map<String, String> parseQueryParams(String query) {
-        Map<String, String> map = new HashMap<>();
-        if (query != null) {
-            for (String param : query.split("&")) {
-                String[] pair = param.split("=", 2);
-                if (pair.length == 2) {
-                    map.put(pair[0], pair[1]);
-                }
-            }
+    // Helper method to grab just the raw text and strip the JSON quotes
+    private String extractText(String voskJson) {
+        int textIndex = voskJson.indexOf("\"text\" : \"");
+        int partialIndex = voskJson.indexOf("\"partial\" : \"");
+
+        if (textIndex != -1) {
+            int endIndex = voskJson.indexOf("\"", textIndex + 10);
+            return voskJson.substring(textIndex + 10, endIndex);
+        } else if (partialIndex != -1) {
+            int endIndex = voskJson.indexOf("\"", partialIndex + 13);
+            return voskJson.substring(partialIndex + 13, endIndex);
         }
-        return map;
+        return "";
     }
 }

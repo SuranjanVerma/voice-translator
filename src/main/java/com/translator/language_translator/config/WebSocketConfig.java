@@ -1,7 +1,7 @@
 package com.translator.language_translator.config;
 
-import com.translator.language_translator.services.SpeechService;
 import com.translator.language_translator.services.TranslationService;
+import com.translator.language_translator.services.VoskModelManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -13,19 +13,19 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
 
-    private final SpeechService speechService;
+    private final VoskModelManager modelManager;
     private final TranslationService translationService;
 
-    // Cleaned up constructor: no longer asks for TranslationRepository
-    public WebSocketConfig(SpeechService speechService, TranslationService translationService) {
-        this.speechService = speechService;
+    // Inject BOTH services
+    public WebSocketConfig(VoskModelManager modelManager, TranslationService translationService) {
+        this.modelManager = modelManager;
         this.translationService = translationService;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        // Cleaned up handler injection: only passes the two required services
-        registry.addHandler(new SpeechWebSocketHandler(speechService, translationService), "/ws/speech")
+        // Pass BOTH services into your handler
+        registry.addHandler(new SpeechWebSocketHandler(modelManager, translationService), "/ws/speech")
                 .setAllowedOriginPatterns("*");
     }
 
