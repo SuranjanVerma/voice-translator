@@ -73,13 +73,24 @@
             <div class="relative group">
                 <select id="targetLang" class="w-full appearance-none border border-white/80 rounded-2xl p-4 bg-white/90 text-slate-800 font-bold shadow-sm focus:ring-4 focus:ring-red-500/10 focus:border-red-400 transition-all outline-none cursor-pointer">
                     <optgroup label="Indian Languages">
-                        <option value="hi">Hindi</option><option value="or">Odia</option><option value="bn">Bengali</option>
-                        <option value="pa">Punjabi</option><option value="gu">Gujarati</option><option value="mr">Marathi</option>
-                        <option value="ta">Tamil</option><option value="kn">Kannada</option><option value="ml">Malayalam</option>
+                        <option value="hi">Hindi</option>
+                        <option value="sa">Sanskrit</option>
+                        <option value="or">Odia</option>
+                        <option value="bn">Bengali</option>
+                        <option value="pa">Punjabi</option>
+                        <option value="gu">Gujarati</option>
+                        <option value="mr">Marathi</option>
+                        <option value="ta">Tamil</option>
+                        <option value="kn">Kannada</option>
+                        <option value="ml">Malayalam</option>
                     </optgroup>
                     <optgroup label="International Languages">
-                        <option value="en">English</option><option value="fr">French</option><option value="ru">Russian</option>
-                        <option value="de">German</option><option value="es">Spanish</option><option value="zh">Chinese</option>
+                        <option value="en">English</option>
+                        <option value="fr">French</option>
+                        <option value="ru">Russian</option>
+                        <option value="de">German</option>
+                        <option value="es">Spanish</option>
+                        <option value="zh">Chinese</option>
                     </optgroup>
                 </select>
                 <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 group-hover:text-red-500 transition-colors">
@@ -308,7 +319,7 @@
     });
 
     // ------------------------------------------------------------------
-    // 4. TTS, WebSocket Streaming, Recording Logic (FULL)
+    // 4. TTS, WebSocket Streaming, Recording Logic (FULL & MOBILE FIXED)
     // ------------------------------------------------------------------
     let socket = null;
     let audioContext = null;
@@ -332,7 +343,7 @@
         const voiceMap = {
             'hi': 'hi-IN', 'es': 'es-ES', 'fr': 'fr-FR', 'or': 'or-IN',
             'bn': 'bn-IN', 'zh': 'zh-CN', 'de': 'de-DE', 'ru': 'ru-RU',
-            'en': 'en-US', 'mr': 'mr-IN', 'ta': 'ta-IN'
+            'en': 'en-US', 'mr': 'mr-IN', 'ta': 'ta-IN', 'sa': 'hi-IN' // Sanskrit falls back to Hindi pronunciation
         };
         const targetLangCode = voiceMap[selectedLang] || 'en-US';
         const utterance = new SpeechSynthesisUtterance(text);
@@ -402,10 +413,24 @@
         socket.onclose = () => stopRecording();
 
         try {
-            globalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            // THE CRITICAL MOBILE FIX: Force 16000Hz hardware-side
+            const constraints = {
+                audio: {
+                    sampleRate: 16000,
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                },
+                video: false
+            };
 
+            globalStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            // Force the AudioContext to strictly use 16000Hz
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
             const input = audioContext.createMediaStreamSource(globalStream);
+
+            // Use standard buffer size to prevent massive chunking
             processor = audioContext.createScriptProcessor(4096, 1, 1);
 
             processor.onaudioprocess = (e) => {
@@ -430,6 +455,7 @@
             playBtn.classList.add('hidden');
 
         } catch (err) {
+            console.error("Mic Access Error:", err);
             alert("Microphone access denied. Please check your browser permissions.");
         }
     }
