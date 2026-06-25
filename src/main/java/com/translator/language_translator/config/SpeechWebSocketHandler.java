@@ -19,7 +19,9 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
     private final VoskModelManager modelManager;
     private final TranslationService translationService;
 
-    // Every user gets their own private memory and settings
+    private static int activeConnections = 0;
+    private static String currentGlobalLang = null;
+
     private final ConcurrentHashMap<String, Recognizer> userRecognizers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> userTargetLangs = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> userSourceLangs = new ConcurrentHashMap<>();
@@ -32,7 +34,9 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String query = session.getUri() != null ? session.getUri().getQuery() : "";
-        String sourceLang = "en-IN";
+
+        // Changed default from en-IN to en-US
+        String sourceLang = "en-US";
         String targetLang = "hi";
 
         if (query != null) {
@@ -43,19 +47,38 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
             }
         }
 
-        userSourceLangs.put(session.getId(), sourceLang);
-        userTargetLangs.put(session.getId(), targetLang);
+        synchronized (SpeechWebSocketHandler.class) {
+            if (activeConnections >= 2) {
+                session.sendMessage(new TextMessage("{\"error\": \"Server is at maximum capacity (2/2). Please wait.\"}"));
+                session.close(CloseStatus.SERVER_ERROR);
+                return;
+            }
 
-        // 1. Get the shared dictionary
+            if (activeConnections > 0 && currentGlobalLang != null && !currentGlobalLang.equals(sourceLang)) {
+                session.sendMessage(new TextMessage("{\"error\": \"Server is currently locked to " + currentGlobalLang + " for another user to protect memory. Please select " + currentGlobalLang + " or wait for them to finish.\"}"));
+                session.close(CloseStatus.SERVER_ERROR);
+                return;
+            }
+
+            currentGlobalLang = sourceLang;
+            activeConnections++;
+        }
+
         Model sharedModel = modelManager.getModel(sourceLang);
 
         if (sharedModel == null) {
             session.sendMessage(new TextMessage("{\"error\": \"Speech model unavailable.\"}"));
             session.close();
+            synchronized (SpeechWebSocketHandler.class) {
+                activeConnections--;
+                if (activeConnections == 0) currentGlobalLang = null;
+            }
             return;
         }
 
-        // 2. Create a private "Ear" for this specific user
+        userSourceLangs.put(session.getId(), sourceLang);
+        userTargetLangs.put(session.getId(), targetLang);
+
         Recognizer privateRecognizer = new Recognizer(sharedModel, 16000.0f);
         userRecognizers.put(session.getId(), privateRecognizer);
 
@@ -68,9 +91,11 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
         if (myRecognizer == null) return;
 
         try {
-            // FIX: Safely extract only the actual bytes to prevent buffer memory leaks
             ByteBuffer buffer = message.getPayload();
             int bytesCount = buffer.remaining();
+
+            if (bytesCount > 9000) return;
+
             byte[] audioData = new byte[bytesCount];
             buffer.get(audioData);
 
@@ -81,7 +106,6 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
                     String sourceLang = userSourceLangs.get(session.getId());
                     String targetLang = userTargetLangs.get(session.getId());
 
-                    // API Translation
                     String translatedText = translationService.translate(originalText, sourceLang, targetLang);
 
                     session.sendMessage(new TextMessage(
@@ -92,22 +116,30 @@ public class SpeechWebSocketHandler extends BinaryWebSocketHandler {
                 String partialResult = extractText(myRecognizer.getPartialResult());
                 session.sendMessage(new TextMessage("{\"original\": \"" + partialResult + "\"}"));
             }
-
         } catch (IOException e) {
-            // Ignore disconnects
+            // Ignore normal disconnects
         }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        // 3. Destroy THIS user's private ear, but leave the heavy Model in RAM
         Recognizer oldRecognizer = userRecognizers.remove(session.getId());
+
         if (oldRecognizer != null) {
             try { oldRecognizer.close(); } catch (Exception ignored) {}
+            System.gc();
         }
 
         userSourceLangs.remove(session.getId());
         userTargetLangs.remove(session.getId());
+
+        synchronized (SpeechWebSocketHandler.class) {
+            activeConnections--;
+            if (activeConnections <= 0) {
+                activeConnections = 0;
+                currentGlobalLang = null;
+            }
+        }
     }
 
     private String extractText(String voskJson) {

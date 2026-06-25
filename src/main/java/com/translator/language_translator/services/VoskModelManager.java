@@ -3,41 +3,49 @@ package com.translator.language_translator.services;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.vosk.Model;
-import java.util.concurrent.ConcurrentHashMap;
 import java.io.File;
 import jakarta.annotation.PreDestroy;
 
 @Service
 public class VoskModelManager {
 
-    // We only cache the heavy Dictionaries (Models), NOT the ears (Recognizers)
-    private final ConcurrentHashMap<String, Model> loadedModels = new ConcurrentHashMap<>();
+    private Model activeModel = null;
+    private String activeLanguage = null;
 
     @Value("${vosk.model.dir:src/main/resources/vosk-model}")
     private String modelBaseDir;
 
     public synchronized Model getModel(String languageCode) {
-        // 1. If the dictionary is already in RAM, share it!
-        if (loadedModels.containsKey(languageCode)) {
-            return loadedModels.get(languageCode);
+        if (activeLanguage != null && activeLanguage.equals(languageCode) && activeModel != null) {
+            return activeModel;
         }
+
+        System.out.println("Language switch detected. Clearing old memory...");
+        if (activeModel != null) {
+            try {
+                activeModel.close();
+            } catch (Exception ignored) {}
+            activeModel = null;
+        }
+
+        System.gc();
 
         try {
             String basePath = modelBaseDir + File.separator;
             String targetPath;
 
+            // en-IN has been completely removed.
             switch (languageCode) {
-                case "en-IN": targetPath = basePath + "model-in"; break;
                 case "hi-IN": targetPath = basePath + "model-hi"; break;
                 case "en-US":
                 default:      targetPath = basePath + "model-en"; break;
             }
 
-            System.out.println("Loading 40MB Vosk Model into RAM for: " + languageCode);
-            Model newModel = new Model(targetPath);
-            loadedModels.put(languageCode, newModel);
+            System.out.println("Loading Vosk Model into RAM for: " + languageCode);
+            activeModel = new Model(targetPath);
+            activeLanguage = languageCode;
 
-            return newModel;
+            return activeModel;
 
         } catch (Exception e) {
             System.err.println("CRITICAL: Failed to load model for [" + languageCode + "]: " + e.getMessage());
@@ -47,12 +55,8 @@ public class VoskModelManager {
 
     @PreDestroy
     public void cleanup() {
-        System.out.println("Shutting down server, flushing native memory...");
-        loadedModels.forEach((key, model) -> {
-            if (model != null) {
-                try { model.close(); } catch (Exception ignored) {}
-            }
-        });
-        loadedModels.clear();
+        if (activeModel != null) {
+            try { activeModel.close(); } catch (Exception ignored) {}
+        }
     }
 }

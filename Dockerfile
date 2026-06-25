@@ -12,13 +12,8 @@ RUN apt-get update && apt-get install -y wget unzip && rm -rf /var/lib/apt/lists
 # Create model storage directory
 RUN mkdir -p /opt/vosk-models
 
-# 2. Download all models BEFORE copying source code.
+# 2. Download ONLY the required models (US English & Hindi) BEFORE copying source code.
 # This ensures these massive layers are cached even when your Java code changes.
-RUN wget -q -O model-in.zip https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip && \
-    unzip -q model-in.zip && \
-    mv vosk-model-small-en-in-0.4 /opt/vosk-models/model-in && \
-    rm model-in.zip
-
 RUN wget -q -O model-en.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip && \
     unzip -q model-en.zip && \
     mv vosk-model-small-en-us-0.15 /opt/vosk-models/model-en && \
@@ -32,11 +27,6 @@ RUN wget -q -O model-hi.zip https://alphacephei.com/vosk/models/vosk-model-small
     test -d /opt/vosk-models/model-hi && \
     test -f /opt/vosk-models/model-hi/am/final.mdl || \
     (echo "FAILED to validate Hindi model" && exit 1)
-
-RUN wget -q -O model-te.zip https://alphacephei.com/vosk/models/vosk-model-small-te-0.42.zip && \
-    unzip -q model-te.zip && \
-    mv vosk-model-small-te-0.42 /opt/vosk-models/model-te && \
-    rm model-te.zip
 
 # 3. NOW copy the source code and build.
 # Rebuilds will now start from this step, skipping the model downloads entirely.
@@ -56,7 +46,7 @@ COPY --from=builder /opt/vosk-models /opt/vosk-models
 # Set the model directory for Spring Boot
 ENV vosk.model.dir=/opt/vosk-models
 
-# Use Railway's dynamic PORT (fallback to 8080 for local)
+# Use dynamic PORT (fallback to 8080 for local)
 ENV PORT=8080
 EXPOSE 8080
 

@@ -20,6 +20,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -29,18 +30,19 @@ public class SpeechService {
     private static final Logger logger = LoggerFactory.getLogger(SpeechService.class);
     private static final float SAMPLE_RATE = 16000.0f;
 
+    // --- RAM PROTECTION LIMITS ---
+    private static final int MAX_CONCURRENT_USERS = 2; // Strict limit for 512MB RAM
+    private final AtomicInteger currentActiveUsers = new AtomicInteger(0);
+
     private final File modelsDir;
-    // Memory Optimization: Caffeine Cache automatically ejects unused models after 15 mins
     private final Cache<String, Model> modelCache;
     private final ConcurrentHashMap<String, Recognizer> activeSessions = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
-    // Mapping official lightweight download URLs to avoid OOM errors on free-tier clouds
+    // STRICTLY ONLY English (en-US) and Hindi (hi)
     private static final Map<String, String> MODEL_DOWNLOAD_URLS = Map.of(
             "model-en", "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-            "model-hi", "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip",
-            "model-te", "https://alphacephei.com/vosk/models/vosk-model-small-te-0.4.zip",
-            "model-in", "https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip"
+            "model-hi", "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip"
     );
 
     public SpeechService(@Value("${vosk.model.dir:src/main/resources/vosk-model}") String modelDirPath,
@@ -51,7 +53,6 @@ public class SpeechService {
         }
         this.objectMapper = objectMapper;
 
-        // Auto-evict models to prevent out-of-memory errors on 512MB/1GB RAM servers
         this.modelCache = Caffeine.newBuilder()
                 .expireAfterAccess(15, TimeUnit.MINUTES)
                 .removalListener((String key, Model model, RemovalCause cause) -> {
@@ -64,11 +65,11 @@ public class SpeechService {
     }
 
     private String mapLanguageToModelFolder(String langCode) {
+        // Indian English (en-IN) and Telugu (te) removed entirely.
         return switch (langCode) {
             case "hi-IN", "hi" -> "model-hi";
-            case "te-IN", "te" -> "model-te";
             case "en-US", "en" -> "model-en";
-            default          -> "model-in";
+            default            -> "model-en"; // Default fallback is now Standard English
         };
     }
 
@@ -80,7 +81,6 @@ public class SpeechService {
     private Model loadOrDownloadModel(String folderName) {
         File targetFolder = new File(modelsDir, folderName);
 
-        // If folder is empty or doesn't exist, trigger zero-setup dynamic download
         if (!targetFolder.exists() || targetFolder.list() == null || targetFolder.list().length == 0) {
             downloadAndUnzipModel(folderName, targetFolder);
         }
@@ -110,7 +110,6 @@ public class SpeechService {
             try (ZipInputStream zis = new ZipInputStream(new FileInputStream(tempZip))) {
                 ZipEntry entry;
                 while ((entry = zis.getNextEntry()) != null) {
-                    // Bypass the root folder inside the zip so contents sit directly in targetFolder
                     String name = entry.getName().replaceFirst("^[^/]+/", "");
                     if (name.isEmpty()) continue;
 
@@ -146,15 +145,32 @@ public class SpeechService {
     }
 
     public String startSession(String sourceLang) throws Exception {
-        Model model = getModelForLanguage(sourceLang);
-        String sessionId = java.util.UUID.randomUUID().toString();
-        activeSessions.put(sessionId, new Recognizer(model, SAMPLE_RATE));
-        return sessionId;
+        // Enforce concurrency limit to protect server memory
+        if (currentActiveUsers.get() >= MAX_CONCURRENT_USERS) {
+            throw new IllegalStateException("Server is at maximum capacity. Please wait.");
+        }
+
+        currentActiveUsers.incrementAndGet();
+        try {
+            Model model = getModelForLanguage(sourceLang);
+            String sessionId = java.util.UUID.randomUUID().toString();
+            activeSessions.put(sessionId, new Recognizer(model, SAMPLE_RATE));
+            return sessionId;
+        } catch (Exception e) {
+            currentActiveUsers.decrementAndGet();
+            throw e;
+        }
     }
 
     public String processChunk(String sessionId, byte[] audioBytes, int numBytes) throws Exception {
         Recognizer recognizer = activeSessions.get(sessionId);
         if (recognizer == null) throw new RuntimeException("Session expired or missing: " + sessionId);
+
+        // --- AUDIO FIREWALL ---
+        if (numBytes > 9000) {
+            logger.warn("Dropped massive mobile audio packet ({} bytes) to protect RAM.", numBytes);
+            return objectMapper.writeValueAsString(Map.of("text", "", "final", false, "dropped", true));
+        }
 
         if (numBytes > 0) recognizer.acceptWaveForm(audioBytes, numBytes);
 
@@ -166,9 +182,15 @@ public class SpeechService {
         Recognizer recognizer = activeSessions.remove(sessionId);
         if (recognizer == null) return "";
 
-        String finalText = objectMapper.readTree(recognizer.getFinalResult()).path("text").asText("");
-        recognizer.close();
-        return finalText;
+        try {
+            String finalText = objectMapper.readTree(recognizer.getFinalResult()).path("text").asText("");
+            return finalText;
+        } finally {
+            // Guarantee native memory is freed and open a slot for the next user
+            recognizer.close();
+            currentActiveUsers.decrementAndGet();
+            System.gc(); // Force JVM to immediately clean up JNI proxies
+        }
     }
 
     @PreDestroy
